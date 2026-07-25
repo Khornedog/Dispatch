@@ -2,7 +2,7 @@
 
 Dispatch is a single-file web app for managing a personal work portfolio: log tasks with priority, difficulty, and time estimates, and let the app suggest what to work on next based on a scoring system — or just ask it in plain language.
 
-**Current version: v1.6.0** (shown in the app header; see [Version History](#version-history) below)
+**Current version: v1.6.3** (shown in the app header; see [Version History](#version-history) below)
 
 ## Features
 
@@ -11,7 +11,7 @@ Dispatch is a single-file web app for managing a personal work portfolio: log ta
 - **Difficulty gauge** — a half-moon dial (Easy → Hard) instead of a plain slider, color-coded on the same scale as priority.
 - **Automatic scoring & "Next Up"** — every task gets a numeric score from priority, difficulty, time, and due-date urgency; the top-scoring task is surfaced as a recommendation, with a "Reroll" option.
 - **Status actions**:
-  - **Done** — closes the task.
+  - **Done** — closes the task (can be manually reactivated later from the Closed section if needed).
   - **Done for Day** — removes it from today's queue; it reactivates automatically the next calendar day.
   - **Hold…** — set it aside until a specific day, or a quick duration (15 min / 1 hr / 4 hr / tomorrow 9am); it reactivates automatically once the hold expires.
   - **De-prioritize** — sets it aside indefinitely until manually reactivated.
@@ -62,9 +62,12 @@ score = (6 − priority) × 22 − difficulty × 6 − min(estMinutes, 240) / 24
 | v1.4.2 | Weekly recurrence: multi-day select |
 | v1.5.0 | Export/Import; environment-aware storage (Claude storage with localStorage fallback) |
 | v1.6.0 | Local-timezone day boundaries; day-only Hold option; version display added |
+| v1.6.1 | Added "Reactivate" button for closed (Done) tasks |
+| v1.6.2 | Task add/edit modal no longer closes when clicking outside it |
+| v1.6.3 | Voice input errors now surface a message instead of failing silently |
 
 ## Notes & Limitations
 
 - This is a single self-contained HTML file — no build step, no dependencies to install.
-- Voice input relies on the browser's built-in speech recognition (best support in Chrome/Edge; limited in Firefox/Safari).
+- Voice input relies on the browser's built-in speech recognition (best support in Chrome/Edge; limited in Firefox/Safari). When run inside Claude's artifact preview, the sandboxed environment may block microphone access entirely — if voice input doesn't work there, try the standalone downloaded file in a regular browser tab instead.
 - There's no encryption or account system — anyone with access to the file/browser profile can see the stored tasks.

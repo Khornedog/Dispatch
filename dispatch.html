@@ -10,6 +10,9 @@
   v1.4.2  Weekly recurrence: multi-day select
   v1.5.0  Export/Import; environment-aware storage (window.storage with localStorage fallback)
   v1.6.0  Local-timezone day boundaries; day-only Hold option; version display added
+  v1.6.1  Added "Reactivate" button for closed (Done) tasks
+  v1.6.2  Task add/edit modal no longer closes when clicking outside it
+  v1.6.3  Voice input errors now surface a message instead of failing silently
   -- bump this on every future change, and add a line above --
 -->
 <html lang="en">
@@ -215,7 +218,7 @@
       <div class="brand-mark">D</div>
       <div>
         <h1>Dispatch</h1>
-        <div class="tag">work queue console · v1.6.0</div>
+        <div class="tag">work queue console · v1.6.3</div>
       </div>
     </div>
     <div class="stats">
@@ -625,7 +628,9 @@
         <button class="btn btn-sm" onclick="Dispatch.setStatus('${t.id}','active')">Reactivate</button>
         <button class="btn btn-sm btn-ghost" onclick="Dispatch.editTask('${t.id}')">Edit</button>`;
     } else {
-      actions = `<button class="btn btn-sm btn-ghost" onclick="Dispatch.deleteTask('${t.id}')">Remove</button>`;
+      actions = `
+        <button class="btn btn-sm" onclick="Dispatch.setStatus('${t.id}','active')">Reactivate</button>
+        <button class="btn btn-sm btn-ghost" onclick="Dispatch.deleteTask('${t.id}')">Remove</button>`;
     }
     const holdChip = t.status === 'onhold'
       ? (t.holdUntilDay ? `<span class="chip hold">${fmtHoldDay(t.holdUntilDay)}</span>` : (t.holdUntil ? `<span class="chip hold">${fmtHold(t.holdUntil)}</span>` : ''))
@@ -951,6 +956,17 @@
   /* ============== VOICE INPUT ============== */
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const micBtn = document.getElementById('micBtn');
+  function micErrorMessage(code){
+    const map = {
+      'not-allowed': "Microphone access was blocked or denied — check your browser's site permissions (or, if you're viewing this inside Claude, the artifact preview may not be allowed to use the microphone at all; try opening the downloaded file directly in a browser instead).",
+      'service-not-allowed': "Microphone access was blocked — check your browser's site permissions.",
+      'audio-capture': "No microphone was found on this device.",
+      'no-speech': "Didn't catch any speech — try again.",
+      'network': "Voice recognition needs a network connection and one isn't available right now.",
+      'aborted': null
+    };
+    return code in map ? map[code] : `Voice input couldn't start (${code || 'unknown error'}).`;
+  }
   if(SpeechRecognition){
     recognition = new SpeechRecognition();
     recognition.continuous = false;
@@ -959,11 +975,17 @@
     micBtn.innerHTML = '🎙';
     micBtn.addEventListener('click', ()=>{
       if(recognizing){ recognition.stop(); return; }
-      try{ recognition.start(); }catch(e){}
+      try{ recognition.start(); }
+      catch(e){ appendMsg('system', micErrorMessage(e && e.message)); }
     });
     recognition.onstart = ()=>{ recognizing = true; micBtn.classList.add('listening'); };
     recognition.onend = ()=>{ recognizing = false; micBtn.classList.remove('listening'); };
-    recognition.onerror = ()=>{ recognizing = false; micBtn.classList.remove('listening'); };
+    recognition.onerror = (e)=>{
+      recognizing = false;
+      micBtn.classList.remove('listening');
+      const msg = micErrorMessage(e && e.error);
+      if(msg) appendMsg('system', msg);
+    };
     recognition.onresult = (e)=>{
       const text = e.results[0][0].transcript;
       document.getElementById('chatInput').value = text;
@@ -1099,7 +1121,6 @@ ${JSON.stringify(active)}`;
     reader.readAsText(file);
   });
   document.getElementById('cancelModalBtn').addEventListener('click', closeModal);
-  document.getElementById('modalOverlay').addEventListener('click', (e)=>{ if(e.target.id==='modalOverlay') closeModal(); });
   document.getElementById('saveTaskBtn').addEventListener('click', saveTaskFromForm);
   function getWeeklyDaysValue(){
     return document.getElementById('fWeeklyDays').value.split(',').filter(s=>s!=='').map(Number);
