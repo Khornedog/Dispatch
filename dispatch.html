@@ -1,0 +1,1210 @@
+<!DOCTYPE html>
+<!--
+  DISPATCH — version history
+  v1.0.0  Initial build: task tracking, scoring, hold/park states, chat assistant, voice input
+  v1.1.0  "Top" priority exclusivity rule (only one task can be Top at a time)
+  v1.2.0  Priority renamed Top/High/Medium/Low/Whatevs; scoring direction reversed (1=highest)
+  v1.3.0  Vertical priority buttons + difficulty gauge, color-coded to match
+  v1.4.0  Daily recurrence
+  v1.4.1  Weekly recurrence (single day)
+  v1.4.2  Weekly recurrence: multi-day select
+  v1.5.0  Export/Import; environment-aware storage (window.storage with localStorage fallback)
+  v1.6.0  Local-timezone day boundaries; day-only Hold option; version display added
+  -- bump this on every future change, and add a line above --
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dispatch — Work Queue Console</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23E2A63B'/%3E%3Cstop offset='1' stop-color='%23C1523D'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='14' fill='%2312161B'/%3E%3Crect x='6' y='6' width='52' height='52' rx='10' fill='url(%23g)'/%3E%3Ctext x='32' y='43' font-family='monospace' font-weight='700' font-size='30' fill='%2312161B' text-anchor='middle'%3ED%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #12161B;
+    --panel: #1A2029;
+    --panel-2: #212836;
+    --border: #2C3542;
+    --text: #E9E6DE;
+    --text-dim: #8B93A1;
+    --text-faint: #566173;
+    --amber: #E2A63B;
+    --teal: #4E9E97;
+    --red: #C1523D;
+    --green: #6FA96B;
+    --p1: #4E9E97;
+    --p2: #6FA96B;
+    --p3: #E2A63B;
+    --p4: #D98A3D;
+    --p5: #C1523D;
+    --radius: 5px;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    min-height:100vh;
+    background-image:
+      radial-gradient(circle at 15% 0%, rgba(78,158,151,0.06), transparent 40%),
+      radial-gradient(circle at 90% 10%, rgba(226,166,59,0.05), transparent 45%);
+  }
+  ::selection{ background: var(--amber); color:#12161B; }
+  .mono{ font-family:'JetBrains Mono', monospace; }
+  button{ font-family:'Inter',sans-serif; cursor:pointer; }
+  input, textarea, select{ font-family:'Inter',sans-serif; }
+  a{color:inherit;}
+
+  .app{ max-width:1180px; margin:0 auto; padding:28px 20px 60px; }
+
+  /* ---------- Header ---------- */
+  .header{ display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:22px; flex-wrap:wrap; border-bottom:1px solid var(--border); padding-bottom:18px;}
+  .brand{ display:flex; align-items:center; gap:12px; }
+  .brand-mark{ width:34px; height:34px; border-radius:6px; background:linear-gradient(135deg, var(--amber), var(--red)); display:flex; align-items:center; justify-content:center; font-family:'JetBrains Mono',monospace; font-weight:700; color:#12161B; font-size:15px;}
+  .brand h1{ font-size:19px; letter-spacing:0.06em; font-weight:800; text-transform:uppercase;}
+  .brand .tag{ font-size:11px; color:var(--text-dim); font-family:'JetBrains Mono',monospace; letter-spacing:0.04em;}
+  .stats{ display:flex; gap:22px; }
+  .stat{ text-align:right; }
+  .stat .n{ font-family:'JetBrains Mono',monospace; font-size:20px; font-weight:700; color:var(--amber); line-height:1;}
+  .stat .l{ font-size:10px; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-faint); margin-top:4px;}
+
+  /* ---------- Layout ---------- */
+  .grid{ display:grid; grid-template-columns: 1fr 340px; gap:20px; align-items:start; }
+  @media (max-width: 880px){ .grid{ grid-template-columns: 1fr; } }
+
+  /* ---------- Panels ---------- */
+  .panel{ background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:18px; }
+  .panel + .panel{ margin-top:18px; }
+  .panel-title{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;}
+  .panel-title h2{ font-size:11px; text-transform:uppercase; letter-spacing:0.1em; color:var(--text-dim); font-weight:700;}
+
+  /* ---------- Next Up ---------- */
+  .nextup{ background: linear-gradient(135deg, rgba(226,166,59,0.09), rgba(193,82,61,0.04)); border:1px solid rgba(226,166,59,0.35); }
+  .nextup-empty{ color:var(--text-dim); font-size:13px; padding:6px 0 2px; }
+  .nextup-body{ display:flex; gap:16px; align-items:flex-start; }
+  .nextup-info{ flex:1; }
+  .nextup-info .t{ font-size:17px; font-weight:700; margin-bottom:4px; }
+  .nextup-info .meta{ font-size:12px; color:var(--text-dim); font-family:'JetBrains Mono',monospace; }
+  .nextup-actions{ display:flex; gap:8px; flex-shrink:0; }
+  .btn{ border:1px solid var(--border); background:var(--panel-2); color:var(--text); padding:8px 14px; border-radius:5px; font-size:12.5px; font-weight:600; transition:all .12s; }
+  .btn:hover{ border-color:var(--amber); color:var(--amber); }
+  .btn-primary{ background:var(--amber); border-color:var(--amber); color:#171310; }
+  .btn-primary:hover{ background:#f0b455; color:#171310; filter:none; }
+  .btn-ghost{ background:transparent; border-color:transparent; color:var(--text-dim); }
+  .btn-ghost:hover{ color:var(--text); border-color:var(--border); }
+  .btn-sm{ padding:5px 10px; font-size:11.5px; }
+  .btn:disabled{ opacity:0.4; cursor:not-allowed; }
+
+  /* ---------- Toolbar ---------- */
+  .toolbar{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:16px; }
+  .toolbar select, .toolbar input[type=text]{ background:var(--panel-2); border:1px solid var(--border); color:var(--text); padding:7px 10px; border-radius:5px; font-size:12.5px; }
+  .toolbar .spacer{ flex:1; }
+
+  /* ---------- Ticket ---------- */
+  .ticket{
+    position:relative; background:var(--panel-2); border:1px solid var(--border); border-radius:5px;
+    padding:14px 14px 14px 20px; margin-bottom:10px; display:flex; gap:14px; align-items:flex-start;
+    background-image: repeating-linear-gradient(to bottom, var(--border) 0, var(--border) 4px, transparent 4px, transparent 9px);
+    background-size: 1px 100%; background-repeat:no-repeat; background-position: 10px 0;
+  }
+  .ticket::before{ content:''; position:absolute; left:0; top:0; bottom:0; width:5px; border-radius:5px 0 0 5px; background:var(--pcolor); }
+  .ticket.done{ opacity:0.5; }
+  .ticket.done .t{ text-decoration:line-through; }
+  .ticket-main{ flex:1; min-width:0; }
+  .ticket-top{ display:flex; align-items:baseline; gap:10px; margin-bottom:5px; flex-wrap:wrap; }
+  .ticket .tid{ font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--text-faint); }
+  .ticket .t{ font-size:14.5px; font-weight:600; }
+  .ticket .notes{ font-size:12.5px; color:var(--text-dim); margin-top:4px; line-height:1.4; }
+  .ticket-meta{ display:flex; gap:12px; flex-wrap:wrap; margin-top:8px; }
+  .chip{ font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--text-dim); background:rgba(255,255,255,0.03); border:1px solid var(--border); padding:2px 7px; border-radius:3px; }
+  .chip.due{ color:var(--amber); border-color:rgba(226,166,59,0.4); }
+  .chip.overdue{ color:var(--red); border-color:rgba(193,82,61,0.5); }
+  .chip.hold{ color:var(--teal); border-color:rgba(78,158,151,0.45); }
+  .chip.daily{ color:var(--teal); border-color:rgba(78,158,151,0.45); }
+  .ticket-actions{ display:flex; flex-direction:column; gap:6px; flex-shrink:0; }
+  .score-badge{ font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:700; color:var(--pcolor); text-align:right; }
+
+  .section-label{ font-size:11px; text-transform:uppercase; letter-spacing:0.1em; color:var(--text-faint); font-weight:700; margin:22px 0 10px; display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none;}
+  .section-label .n{ background:var(--panel-2); border:1px solid var(--border); padding:1px 7px; border-radius:10px; font-family:'JetBrains Mono',monospace; }
+  .section-label .arrow{ margin-left:auto; font-size:10px; transition:transform .15s; }
+  .collapsed .arrow{ transform:rotate(-90deg); }
+  .collapsed + .section-body{ display:none; }
+
+  .empty{ text-align:center; padding:36px 12px; color:var(--text-faint); font-size:13px; border:1px dashed var(--border); border-radius:6px; }
+  .empty b{ color:var(--text-dim); display:block; font-size:13.5px; margin-bottom:4px;}
+
+  /* ---------- Chat ---------- */
+  .chat-log{ height:340px; overflow-y:auto; display:flex; flex-direction:column; gap:10px; padding-right:4px; margin-bottom:12px; }
+  .chat-log::-webkit-scrollbar{ width:6px; }
+  .chat-log::-webkit-scrollbar-thumb{ background:var(--border); border-radius:3px; }
+  .msg{ font-size:12.5px; line-height:1.45; padding:9px 11px; border-radius:6px; max-width:92%; }
+  .msg .ts{ font-family:'JetBrains Mono',monospace; font-size:9.5px; color:var(--text-faint); margin-bottom:3px; display:block; letter-spacing:0.03em;}
+  .msg.user{ background:var(--panel); border:1px solid var(--border); align-self:flex-end; }
+  .msg.assistant{ background:rgba(78,158,151,0.08); border:1px solid rgba(78,158,151,0.25); align-self:flex-start; }
+  .msg.system{ align-self:center; color:var(--text-faint); font-family:'JetBrains Mono',monospace; font-size:10.5px; background:none; border:none; }
+  .chips-row{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; }
+  .chip-btn{ background:var(--panel-2); border:1px solid var(--border); color:var(--text-dim); font-size:11px; padding:5px 10px; border-radius:14px; }
+  .chip-btn:hover{ border-color:var(--teal); color:var(--teal); }
+  .chat-input-row{ display:flex; gap:8px; }
+  .chat-input-row input{ flex:1; background:var(--panel-2); border:1px solid var(--border); color:var(--text); padding:10px 12px; border-radius:6px; font-size:13px; }
+  .chat-input-row input:focus{ outline:none; border-color:var(--teal); }
+  .mic-btn{ width:38px; height:38px; border-radius:6px; border:1px solid var(--border); background:var(--panel-2); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .mic-btn.listening{ background:var(--red); border-color:var(--red); animation:pulse 1.2s infinite; }
+  @keyframes pulse{ 0%,100%{ opacity:1;} 50%{ opacity:0.55;} }
+  .chat-footer-row{ display:flex; justify-content:space-between; align-items:center; margin-top:8px; }
+  .toggle{ display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-faint); }
+  .toggle input{ accent-color: var(--teal); }
+
+  /* ---------- Modal ---------- */
+  .overlay{ position:fixed; inset:0; background:rgba(10,12,15,0.7); display:none; align-items:center; justify-content:center; z-index:50; padding:20px; }
+  .overlay.open{ display:flex; }
+  .modal{ background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:22px; width:100%; max-width:480px; max-height:88vh; overflow-y:auto; }
+  .modal h3{ font-size:14px; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:16px; }
+  .field{ margin-bottom:13px; }
+  .field label{ display:block; font-size:11px; color:var(--text-dim); margin-bottom:5px; text-transform:uppercase; letter-spacing:0.05em; }
+  .field input, .field textarea, .field select{ width:100%; background:var(--panel-2); border:1px solid var(--border); color:var(--text); padding:9px 10px; border-radius:5px; font-size:13px; }
+  .field textarea{ resize:vertical; min-height:56px; }
+  .row2{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .due-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:5px; }
+  .due-header label{ margin-bottom:0; }
+  .recur-toggles{ display:flex; align-items:center; gap:10px; }
+  .daily-toggle{ display:flex; align-items:center; gap:4px; font-size:10px; color:var(--teal); text-transform:uppercase; letter-spacing:0.06em; cursor:pointer; }
+  .daily-toggle input{ width:auto; accent-color:var(--teal); }
+  .weekday-picker{ display:flex; gap:5px; margin-top:8px; }
+  .weekday-btn{ flex:1; background:var(--panel-2); border:1px solid var(--border); border-radius:5px; padding:8px 0; font-size:11px; font-weight:700; color:var(--text-dim); text-align:center; }
+  .weekday-btn:hover{ border-color:var(--teal); color:var(--teal); }
+  .weekday-btn.selected{ background:rgba(78,158,151,0.18); border-color:var(--teal); color:var(--teal); }
+  .row3{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
+  .range-val{ font-family:'JetBrains Mono',monospace; color:var(--amber); font-size:12px; float:right; }
+
+  .priority-stack{ display:flex; flex-direction:column; gap:5px; }
+  .priority-btn{ display:flex; align-items:center; gap:8px; background:var(--panel-2); border:1px solid var(--border); border-radius:5px; padding:7px 10px; font-size:12.5px; font-weight:700; text-align:left; transition:all .12s; }
+  .priority-btn::before{ content:''; width:8px; height:8px; border-radius:50%; background:currentColor; flex-shrink:0; opacity:0.55; }
+  .priority-btn:hover{ border-color:currentColor; }
+  .priority-btn.selected{ background:rgba(255,255,255,0.06); box-shadow: inset 0 0 0 1.5px currentColor; }
+  .priority-btn.selected::before{ opacity:1; }
+
+  .gauge-wrap{ display:flex; flex-direction:column; align-items:center; }
+  #difficultyGauge{ width:100%; max-width:190px; height:auto; overflow:visible; }
+  .gauge-seg{ fill:currentColor; opacity:0.28; stroke:var(--border); stroke-width:1; cursor:pointer; transition:opacity .12s; }
+  .gauge-seg:hover{ opacity:0.5; }
+  .gauge-seg.selected{ opacity:1; stroke:currentColor; }
+  .gauge-num{ fill:var(--text-dim); font-family:'JetBrains Mono',monospace; font-size:13px; text-anchor:middle; pointer-events:none; }
+  .gauge-num.selected{ fill:#171310; font-weight:700; }
+  .gauge-labels{ display:flex; justify-content:space-between; align-items:center; width:100%; max-width:170px; margin-top:-4px; }
+  .gauge-side{ font-size:10px; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-faint); }
+  .gauge-current{ font-size:16px; font-weight:700; color:var(--amber); }
+  .modal-actions{ display:flex; justify-content:flex-end; gap:10px; margin-top:18px; }
+
+  .hold-options{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:14px; }
+  .hold-options button{ background:var(--panel-2); border:1px solid var(--border); color:var(--text); padding:10px; border-radius:5px; font-size:12.5px; text-align:left; }
+  .hold-options button:hover{ border-color:var(--teal); color:var(--teal); }
+  .or-divider{ display:flex; align-items:center; gap:10px; color:var(--text-faint); font-size:10.5px; text-transform:uppercase; letter-spacing:0.08em; margin:14px 0; }
+  .or-divider::before, .or-divider::after{ content:''; flex:1; height:1px; background:var(--border); }
+
+  .fab{ position:fixed; bottom:26px; right:26px; width:52px; height:52px; border-radius:50%; background:var(--amber); color:#171310; font-size:26px; display:flex; align-items:center; justify-content:center; border:none; box-shadow:0 6px 18px rgba(0,0,0,0.4); z-index:10; }
+  .fab:hover{ background:#f0b455; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="header">
+    <div class="brand">
+      <div class="brand-mark">D</div>
+      <div>
+        <h1>Dispatch</h1>
+        <div class="tag">work queue console · v1.6.0</div>
+      </div>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="n" id="statCount">0</div><div class="l">in queue</div></div>
+      <div class="stat"><div class="n" id="statTime">0h</div><div class="l">est. remaining</div></div>
+      <div class="stat"><div class="n" id="statDone">0</div><div class="l">closed today</div></div>
+    </div>
+  </div>
+
+  <div class="panel nextup" id="nextUpPanel">
+    <div class="panel-title"><h2>Next Up</h2><button class="btn btn-sm" id="rerollBtn">Reroll</button></div>
+    <div id="nextUpBody"><div class="nextup-empty">Queue is empty. Log a task to get a recommendation.</div></div>
+  </div>
+
+  <div class="grid" style="margin-top:18px;">
+    <div>
+      <div class="panel">
+        <div class="toolbar">
+          <select id="sortSelect">
+            <option value="score">Sort: Score</option>
+            <option value="priority">Sort: Priority</option>
+            <option value="time">Sort: Time (shortest first)</option>
+            <option value="due">Sort: Due date</option>
+          </select>
+          <input type="text" id="searchInput" placeholder="Filter by title or tag…">
+          <div class="spacer"></div>
+          <button class="btn btn-sm" id="exportBtn">Export</button>
+          <button class="btn btn-sm" id="importBtn">Import</button>
+          <button class="btn btn-primary btn-sm" id="addTaskBtn">+ New Task</button>
+        </div>
+
+        <div id="activeList"></div>
+
+        <div class="section-label" data-target="holdBody" id="holdLabel"><span>On hold</span><span class="n" id="holdCount">0</span><span class="arrow">▾</span></div>
+        <div class="section-body" id="holdBody"></div>
+
+        <div class="section-label" data-target="parkedBody" id="parkedLabel"><span>Parked for today</span><span class="n" id="parkedCount">0</span><span class="arrow">▾</span></div>
+        <div class="section-body" id="parkedBody"></div>
+
+        <div class="section-label collapsed" data-target="deprioBody" id="deprioLabel"><span>Deprioritized</span><span class="n" id="deprioCount">0</span><span class="arrow">▾</span></div>
+        <div class="section-body" id="deprioBody" style="display:none;"></div>
+
+        <div class="section-label collapsed" data-target="doneBody" id="doneLabel"><span>Closed</span><span class="n" id="doneCount">0</span><span class="arrow">▾</span></div>
+        <div class="section-body" id="doneBody" style="display:none;"></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="panel">
+        <div class="panel-title"><h2>Ask the Queue</h2><span class="mono" style="font-size:10px;color:var(--text-faint);">voice-enabled</span></div>
+        <div class="chat-log" id="chatLog"></div>
+        <div class="chips-row" id="chipsRow"></div>
+        <div class="chat-input-row">
+          <button class="mic-btn" id="micBtn" title="Voice input"></button>
+          <input type="text" id="chatInput" placeholder="I've got 20 minutes and low energy…">
+          <button class="btn btn-primary btn-sm" id="sendBtn">Send</button>
+        </div>
+        <div class="chat-footer-row">
+          <label class="toggle"><input type="checkbox" id="speakToggle"> Read replies aloud</label>
+          <span class="mono" style="font-size:10px;color:var(--text-faint);" id="apiStatus"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<button class="fab" id="fabBtn" title="New task">+</button>
+
+<div class="overlay" id="modalOverlay">
+  <div class="modal">
+    <h3 id="modalTitle">New Task</h3>
+    <input type="hidden" id="editId">
+    <div class="field"><label>Title</label><input type="text" id="fTitle" placeholder="e.g. Draft Q3 process map"></div>
+    <div class="field"><label>Notes</label><textarea id="fNotes" placeholder="Optional context…"></textarea></div>
+    <div class="row2">
+      <div class="field">
+        <label>Priority</label>
+        <div class="priority-stack" id="priorityStack">
+          <button type="button" class="priority-btn" data-p="1" style="color:var(--p5)">Top</button>
+          <button type="button" class="priority-btn" data-p="2" style="color:var(--p4)">High</button>
+          <button type="button" class="priority-btn" data-p="3" style="color:var(--p3)">Medium</button>
+          <button type="button" class="priority-btn" data-p="4" style="color:var(--p2)">Low</button>
+          <button type="button" class="priority-btn" data-p="5" style="color:var(--p1)">Whatevs</button>
+        </div>
+        <input type="hidden" id="fPriority" value="3">
+      </div>
+      <div class="field">
+        <label>Difficulty</label>
+        <div class="gauge-wrap">
+          <svg id="difficultyGauge" viewBox="0 0 200 112"></svg>
+          <div class="gauge-labels">
+            <span class="gauge-side">Easy</span>
+            <span class="gauge-current mono" id="difficultyNum">3</span>
+            <span class="gauge-side">Hard</span>
+          </div>
+        </div>
+        <input type="hidden" id="fDifficulty" value="3">
+      </div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>Est. minutes</label><input type="number" id="fTime" min="5" step="5" value="30"></div>
+      <div class="field" id="dueDateField">
+        <div class="due-header">
+          <label id="dueDateLabel">Due date</label>
+          <div class="recur-toggles">
+            <label class="daily-toggle"><input type="checkbox" id="fWeekly"> WEEKLY</label>
+            <label class="daily-toggle"><input type="checkbox" id="fDaily"> DAILY</label>
+          </div>
+        </div>
+        <input type="date" id="fDue">
+        <div class="weekday-picker" id="weekdayPicker" style="display:none;">
+          <button type="button" class="weekday-btn" data-day="0">S</button>
+          <button type="button" class="weekday-btn" data-day="1">M</button>
+          <button type="button" class="weekday-btn" data-day="2">T</button>
+          <button type="button" class="weekday-btn" data-day="3">W</button>
+          <button type="button" class="weekday-btn" data-day="4">T</button>
+          <button type="button" class="weekday-btn" data-day="5">F</button>
+          <button type="button" class="weekday-btn" data-day="6">S</button>
+        </div>
+        <input type="hidden" id="fWeeklyDays" value="0">
+      </div>
+    </div>
+    <div class="field"><label>Tags (comma separated)</label><input type="text" id="fTags" placeholder="reporting, client-x"></div>
+    <div class="modal-actions">
+      <button class="btn" id="cancelModalBtn">Cancel</button>
+      <button class="btn btn-primary" id="saveTaskBtn">Save Task</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="holdModalOverlay">
+  <div class="modal" style="max-width:360px;">
+    <h3>Put On Hold</h3>
+    <input type="hidden" id="holdTaskId">
+    <div class="hold-options">
+      <button data-mins="15">15 minutes</button>
+      <button data-mins="60">1 hour</button>
+      <button data-mins="240">4 hours</button>
+      <button data-mins="tomorrow">Tomorrow, 9am</button>
+    </div>
+    <div class="or-divider">or pick a day</div>
+    <div class="field"><input type="date" id="holdCustomDay"></div>
+    <div class="modal-actions">
+      <button class="btn" id="cancelHoldBtn">Cancel</button>
+      <button class="btn btn-primary" id="confirmHoldBtn">Set Hold</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="conflictModalOverlay">
+  <div class="modal" style="max-width:380px;">
+    <h3>Top Priority Already Assigned</h3>
+    <p style="font-size:13px; color:var(--text-dim); line-height:1.5; margin-bottom:16px;">
+      <span id="conflictTaskName" style="color:var(--text); font-weight:600;"></span> is currently the only task marked Top priority. Only one task can be Top at a time.
+    </p>
+    <div class="modal-actions" style="justify-content:flex-start; flex-wrap:wrap;">
+      <button class="btn btn-primary" id="conflictConfirmBtn">Make this the new Top priority</button>
+      <button class="btn" id="conflictCancelBtn">Keep this at High priority instead</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="importModalOverlay">
+  <div class="modal" style="max-width:460px;">
+    <h3>Import Tasks</h3>
+    <p style="font-size:12.5px; color:var(--text-dim); line-height:1.5; margin-bottom:12px;">
+      Choose a Dispatch export file, or paste exported JSON below. Existing tasks are kept — only new ones are added.
+    </p>
+    <div class="field">
+      <input type="file" id="importFile" accept="application/json,.json">
+    </div>
+    <div class="field">
+      <textarea id="importText" rows="8" placeholder="Paste exported JSON here…" style="font-family:'JetBrains Mono',monospace; font-size:11.5px;"></textarea>
+    </div>
+    <div id="importError" style="font-size:12px; color:var(--red); margin-bottom:8px; display:none;"></div>
+    <div class="modal-actions">
+      <button class="btn" id="cancelImportBtn">Cancel</button>
+      <button class="btn btn-primary" id="confirmImportBtn">Import</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ============== STATE ============== */
+  let tasks = [];
+  let chatHistory = []; // {role, content, ts}
+  let recognizing = false;
+  let recognition = null;
+  let lastSuggestedId = null;
+
+  function localDateKey(d){
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    const day = String(d.getDate()).padStart(2,'0');
+    return `${y}-${m}-${day}`;
+  }
+  const todayKey = () => localDateKey(new Date());
+  const WEEKDAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  function weeklyDaysOf(t){
+    if(Array.isArray(t.weeklyDays) && t.weeklyDays.length) return t.weeklyDays.slice().sort((a,b)=>a-b);
+    if(typeof t.weeklyDay === 'number') return [t.weeklyDay];
+    return [0];
+  }
+  function nextWeekdayAfter(dateStr, targetDay){
+    const [y,m,d] = dateStr.split('-').map(Number);
+    const dt = new Date(y, m-1, d);
+    dt.setDate(dt.getDate()+1);
+    while(dt.getDay() !== targetDay){ dt.setDate(dt.getDate()+1); }
+    return localDateKey(dt);
+  }
+
+  /* ============== STORAGE ============== */
+  const hasCloudStorage = typeof window.storage !== 'undefined' && window.storage && typeof window.storage.get === 'function';
+  const storageAdapter = {
+    async get(key){
+      if(hasCloudStorage){
+        try{ return await window.storage.get(key, false); }
+        catch(e){ return null; }
+      }
+      const raw = localStorage.getItem(key);
+      return raw === null ? null : { key, value: raw, shared: false };
+    },
+    async set(key, value){
+      if(hasCloudStorage){
+        return window.storage.set(key, value, false);
+      }
+      localStorage.setItem(key, value);
+      return { key, value, shared: false };
+    }
+  };
+
+  async function loadTasks(){
+    try{
+      const res = await storageAdapter.get('dispatch-tasks');
+      tasks = res && res.value ? JSON.parse(res.value) : [];
+    }catch(e){ tasks = []; }
+    let changed = await reactivateExpired();
+    if(changed) await saveTasks();
+  }
+
+  async function reactivateExpired(){
+    let changed = false;
+    const tk = todayKey();
+    const now = new Date();
+    tasks.forEach(t=>{
+      if(t.status === 'parked' && t.parkedUntil && t.parkedUntil <= tk){
+        t.status = 'active'; delete t.parkedUntil; changed = true;
+      }
+      if(t.status === 'onhold' && t.holdUntil && new Date(t.holdUntil) <= now){
+        t.status = 'active'; delete t.holdUntil; changed = true;
+      }
+      if(t.status === 'onhold' && t.holdUntilDay && tk >= t.holdUntilDay){
+        t.status = 'active'; delete t.holdUntilDay; changed = true;
+      }
+      if(t.status === 'done' && t.daily && t.closedOn && t.closedOn < tk){
+        t.status = 'active'; delete t.closedOn; changed = true;
+      }
+      if(t.status === 'done' && t.weekly && t.closedOn){
+        const earliest = weeklyDaysOf(t).map(d => nextWeekdayAfter(t.closedOn, d)).sort()[0];
+        if(tk >= earliest){
+          t.status = 'active'; delete t.closedOn; changed = true;
+        }
+      }
+    });
+    return changed;
+  }
+  async function saveTasks(){
+    try{ await storageAdapter.set('dispatch-tasks', JSON.stringify(tasks)); }
+    catch(e){ console.error('save failed', e); }
+  }
+  async function loadChat(){
+    try{
+      const res = await storageAdapter.get('dispatch-chat');
+      chatHistory = res && res.value ? JSON.parse(res.value) : [];
+    }catch(e){ chatHistory = []; }
+  }
+  async function saveChat(){
+    try{ await storageAdapter.set('dispatch-chat', JSON.stringify(chatHistory.slice(-40))); }
+    catch(e){ /* best effort */ }
+  }
+
+
+  /* ============== SCORING ============== */
+  function computeScore(t){
+    let score = (6 - t.priority) * 22 - t.difficulty * 6 - Math.min(t.estMinutes,240)/240*20;
+    if(t.daily || t.weekly){
+      score += 33;
+    } else if(t.dueDate){
+      const days = (new Date(t.dueDate+'T23:59:59') - new Date()) / 86400000;
+      if(days < 0) score += 45;
+      else if(days <= 1) score += 32;
+      else if(days <= 3) score += 16;
+      else if(days <= 7) score += 6;
+    }
+    return Math.round(score);
+  }
+  const PRIORITY_NAMES = {1:'Top', 2:'High', 3:'Medium', 4:'Low', 5:'Whatevs'};
+  function priorityName(p){ return PRIORITY_NAMES[p] || 'Medium'; }
+  function priorityColor(p){
+    return {1:'var(--p5)',2:'var(--p4)',3:'var(--p3)',4:'var(--p2)',5:'var(--p1)'}[p] || 'var(--p3)';
+  }
+  function fmtMinutes(m){
+    if(m < 60) return m + 'm';
+    const h = Math.floor(m/60), rem = m%60;
+    return rem ? h+'h '+rem+'m' : h+'h';
+  }
+  function fmtDue(d){
+    const days = Math.round((new Date(d+'T23:59:59') - new Date()) / 86400000);
+    if(days < 0) return {label:'overdue', cls:'overdue'};
+    if(days === 0) return {label:'due today', cls:'due'};
+    if(days === 1) return {label:'due tomorrow', cls:'due'};
+    return {label:'due '+d, cls:''};
+  }
+  function fmtHold(iso){
+    const d = new Date(iso);
+    const now = new Date();
+    const sameDay = d.toDateString() === now.toDateString();
+    const timeStr = d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+    if(sameDay) return 'resumes ' + timeStr;
+    const dayStr = d.toLocaleDateString([], {month:'short', day:'numeric'});
+    return 'resumes ' + dayStr + ', ' + timeStr;
+  }
+  function fmtHoldDay(dateStr){
+    const [y,m,d] = dateStr.split('-').map(Number);
+    const dt = new Date(y, m-1, d);
+    if(dateStr === todayKey()) return 'resumes today';
+    return 'resumes ' + dt.toLocaleDateString([], {month:'short', day:'numeric'});
+  }
+  function tid(t){ return 'T-' + t.id.slice(-4).toUpperCase(); }
+
+  /* ============== RENDER ============== */
+  function render(){
+    const active = tasks.filter(t=>t.status==='active');
+    const onhold = tasks.filter(t=>t.status==='onhold').sort((a,b)=>{
+      const av = a.holdUntil || (a.holdUntilDay ? a.holdUntilDay+'T00:00:00' : '');
+      const bv = b.holdUntil || (b.holdUntilDay ? b.holdUntilDay+'T00:00:00' : '');
+      return new Date(av) - new Date(bv);
+    });
+    const parked = tasks.filter(t=>t.status==='parked');
+    const deprio = tasks.filter(t=>t.status==='deprioritized');
+    const done = tasks.filter(t=>t.status==='done');
+
+    // stats
+    document.getElementById('statCount').textContent = active.length;
+    const totalMin = active.reduce((s,t)=>s+Number(t.estMinutes||0),0);
+    document.getElementById('statTime').textContent = fmtMinutes(totalMin);
+    const doneToday = done.filter(t=>t.closedOn === todayKey()).length;
+    document.getElementById('statDone').textContent = doneToday;
+
+    // filter/sort
+    const q = document.getElementById('searchInput').value.trim().toLowerCase();
+    let list = active.filter(t => !q || t.title.toLowerCase().includes(q) || (t.tags||[]).some(tag=>tag.toLowerCase().includes(q)));
+    const sortMode = document.getElementById('sortSelect').value;
+    list.sort((a,b)=>{
+      if(sortMode==='priority') return a.priority - b.priority || computeScore(b)-computeScore(a);
+      if(sortMode==='time') return a.estMinutes - b.estMinutes;
+      if(sortMode==='due') return (a.dueDate||'9999') > (b.dueDate||'9999') ? 1 : -1;
+      return computeScore(b) - computeScore(a);
+    });
+
+    renderList('activeList', list, active.length===0 ?
+      '<div class="empty"><b>The queue is clear.</b>Log a task to start building your work portfolio.</div>' : '');
+
+    document.getElementById('holdCount').textContent = onhold.length;
+    renderList('holdBody', onhold, onhold.length===0 ? '<div class="empty">Nothing on hold. Set a task aside and it\'ll return to rotation when the timer\'s up.</div>' : '');
+
+    document.getElementById('parkedCount').textContent = parked.length;
+    renderList('parkedBody', parked, parked.length===0 ? '<div class="empty">Nothing parked. Tasks you set aside for today land here.</div>' : '');
+
+    document.getElementById('deprioCount').textContent = deprio.length;
+    renderList('deprioBody', deprio, deprio.length===0 ? '<div class="empty">No deprioritized tasks.</div>' : '');
+
+    document.getElementById('doneCount').textContent = done.length;
+    renderList('doneBody', done.slice().reverse(), done.length===0 ? '<div class="empty">Nothing closed yet.</div>' : '', true);
+
+    renderNextUp(active);
+  }
+
+  function renderList(containerId, list, emptyHtml, isDone){
+    const el = document.getElementById(containerId);
+    if(list.length===0){ el.innerHTML = emptyHtml; return; }
+    el.innerHTML = list.map(t => ticketHtml(t, isDone)).join('');
+  }
+
+  function ticketHtml(t, isDone){
+    const pcolor = priorityColor(t.priority);
+    const score = computeScore(t);
+    const dueInfo = (!t.daily && !t.weekly && t.dueDate) ? fmtDue(t.dueDate) : null;
+    const tags = (t.tags||[]).map(tag=>`<span class="chip">${escapeHtml(tag)}</span>`).join('');
+    let actions = '';
+    if(t.status === 'active'){
+      actions = `
+        <button class="btn btn-sm" onclick="Dispatch.setStatus('${t.id}','done')">Done</button>
+        <button class="btn btn-sm btn-ghost" onclick="Dispatch.openHoldModal('${t.id}')">Hold…</button>
+        <button class="btn btn-sm btn-ghost" onclick="Dispatch.setStatus('${t.id}','parked')">Done for day</button>
+        <button class="btn btn-sm btn-ghost" onclick="Dispatch.setStatus('${t.id}','deprioritized')">De-prioritize</button>
+        <button class="btn btn-sm btn-ghost" onclick="Dispatch.editTask('${t.id}')">Edit</button>`;
+    } else if(t.status === 'onhold'){
+      actions = `
+        <button class="btn btn-sm" onclick="Dispatch.setStatus('${t.id}','active')">Resume now</button>
+        <button class="btn btn-sm btn-ghost" onclick="Dispatch.editTask('${t.id}')">Edit</button>`;
+    } else if(t.status === 'parked' || t.status === 'deprioritized'){
+      actions = `
+        <button class="btn btn-sm" onclick="Dispatch.setStatus('${t.id}','active')">Reactivate</button>
+        <button class="btn btn-sm btn-ghost" onclick="Dispatch.editTask('${t.id}')">Edit</button>`;
+    } else {
+      actions = `<button class="btn btn-sm btn-ghost" onclick="Dispatch.deleteTask('${t.id}')">Remove</button>`;
+    }
+    const holdChip = t.status === 'onhold'
+      ? (t.holdUntilDay ? `<span class="chip hold">${fmtHoldDay(t.holdUntilDay)}</span>` : (t.holdUntil ? `<span class="chip hold">${fmtHold(t.holdUntil)}</span>` : ''))
+      : '';
+    return `
+    <div class="ticket ${isDone?'done':''}" style="--pcolor:${pcolor}">
+      <div class="ticket-main">
+        <div class="ticket-top">
+          <span class="tid">${tid(t)}</span>
+          <span class="t">${escapeHtml(t.title)}</span>
+        </div>
+        ${t.notes ? `<div class="notes">${escapeHtml(t.notes)}</div>` : ''}
+        <div class="ticket-meta">
+          <span class="chip">${priorityName(t.priority)}</span>
+          <span class="chip">difficulty ${t.difficulty}</span>
+          <span class="chip">${fmtMinutes(Number(t.estMinutes||0))}</span>
+          ${dueInfo ? `<span class="chip ${dueInfo.cls}">${dueInfo.label}</span>` : ''}
+          ${t.daily ? `<span class="chip daily">Daily</span>` : ''}
+          ${t.weekly ? `<span class="chip daily">Weekly · ${weeklyDaysOf(t).map(d=>WEEKDAY_NAMES[d]).join(', ')}</span>` : ''}
+          ${holdChip}
+          ${tags}
+        </div>
+      </div>
+      <div class="ticket-actions">
+        <div class="score-badge" style="--pcolor:${pcolor}">${score}</div>
+        ${actions}
+      </div>
+    </div>`;
+  }
+
+  function renderNextUp(active){
+    const body = document.getElementById('nextUpBody');
+    if(active.length===0){
+      body.innerHTML = '<div class="nextup-empty">Queue is empty. Log a task to get a recommendation.</div>';
+      lastSuggestedId = null;
+      return;
+    }
+    let candidate;
+    if(lastSuggestedId && active.find(t=>t.id===lastSuggestedId)){
+      candidate = active.find(t=>t.id===lastSuggestedId);
+    } else {
+      candidate = active.slice().sort((a,b)=>computeScore(b)-computeScore(a))[0];
+      lastSuggestedId = candidate.id;
+    }
+    const pcolor = priorityColor(candidate.priority);
+    const dueInfo = (!candidate.daily && !candidate.weekly && candidate.dueDate) ? fmtDue(candidate.dueDate) : null;
+    body.innerHTML = `
+      <div class="nextup-body">
+        <div class="nextup-info">
+          <div class="t">${escapeHtml(candidate.title)}</div>
+          <div class="meta">${tid(candidate)} · ${priorityName(candidate.priority)} · difficulty ${candidate.difficulty} · ${fmtMinutes(Number(candidate.estMinutes||0))}${candidate.daily? ' · Daily' : candidate.weekly? ' · Weekly · '+weeklyDaysOf(candidate).map(d=>WEEKDAY_NAMES[d]).join(', ') : (dueInfo? ' · '+dueInfo.label : '')} · score ${computeScore(candidate)}</div>
+        </div>
+        <div class="nextup-actions">
+          <button class="btn btn-primary btn-sm" onclick="Dispatch.setStatus('${candidate.id}','done')">Mark Done</button>
+          <button class="btn btn-sm" onclick="Dispatch.openHoldModal('${candidate.id}')">Hold…</button>
+          <button class="btn btn-sm" onclick="Dispatch.setStatus('${candidate.id}','parked')">Done for Day</button>
+        </div>
+      </div>`;
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  /* ============== ACTIONS ============== */
+  async function setStatus(id, status){
+    const t = tasks.find(x=>x.id===id);
+    if(!t) return;
+    t.status = status;
+    if(status === 'parked'){
+      const d = new Date(); d.setDate(d.getDate()+1);
+      t.parkedUntil = localDateKey(d);
+    }
+    if(status === 'done'){ t.closedOn = todayKey(); }
+    if(status === 'active'){ delete t.parkedUntil; delete t.closedOn; }
+    if(lastSuggestedId === id && status !== 'active') lastSuggestedId = null;
+    await saveTasks();
+    render();
+  }
+  async function deleteTask(id){
+    tasks = tasks.filter(t=>t.id!==id);
+    await saveTasks();
+    render();
+  }
+  function editTask(id){
+    const t = tasks.find(x=>x.id===id);
+    if(!t) return;
+    openModal(t);
+  }
+
+  function openHoldModal(id){
+    document.getElementById('holdTaskId').value = id;
+    document.getElementById('holdCustomDay').value = '';
+    document.getElementById('holdModalOverlay').classList.add('open');
+  }
+  function closeHoldModal(){ document.getElementById('holdModalOverlay').classList.remove('open'); }
+
+  async function confirmHold(untilIso){
+    const id = document.getElementById('holdTaskId').value;
+    const t = tasks.find(x=>x.id===id);
+    if(!t || !untilIso) return;
+    t.status = 'onhold';
+    t.holdUntil = untilIso;
+    delete t.holdUntilDay;
+    if(lastSuggestedId === id) lastSuggestedId = null;
+    await saveTasks();
+    closeHoldModal();
+    render();
+  }
+
+  async function confirmHoldDay(dateStr){
+    const id = document.getElementById('holdTaskId').value;
+    const t = tasks.find(x=>x.id===id);
+    if(!t || !dateStr) return;
+    t.status = 'onhold';
+    t.holdUntilDay = dateStr;
+    delete t.holdUntil;
+    if(lastSuggestedId === id) lastSuggestedId = null;
+    await saveTasks();
+    closeHoldModal();
+    render();
+  }
+
+  window.Dispatch = { setStatus, deleteTask, editTask, openHoldModal };
+
+  /* ============== PRIORITY BUTTONS & DIFFICULTY GAUGE ============== */
+  function setPriority(p){
+    document.getElementById('fPriority').value = p;
+    document.querySelectorAll('.priority-btn').forEach(b=>{
+      b.classList.toggle('selected', Number(b.dataset.p) === p);
+    });
+  }
+  document.querySelectorAll('.priority-btn').forEach(b=>{
+    b.addEventListener('click', ()=> setPriority(Number(b.dataset.p)));
+  });
+
+  function setDifficulty(v){
+    document.getElementById('fDifficulty').value = v;
+    const numEl = document.getElementById('difficultyNum');
+    numEl.textContent = v;
+    numEl.style.color = `var(--p${v})`;
+    document.querySelectorAll('.gauge-seg').forEach(el=>{
+      el.classList.toggle('selected', Number(el.dataset.v) === v);
+    });
+    document.querySelectorAll('.gauge-num').forEach(el=>{
+      el.classList.toggle('selected', Number(el.dataset.v) === v);
+    });
+  }
+  function polarPoint(cx,cy,r,angleDeg){
+    const rad = angleDeg * Math.PI / 180;
+    return { x: cx + r * Math.cos(rad), y: cy - r * Math.sin(rad) };
+  }
+  function wedgePath(cx,cy,rOuter,rInner,a0,a1){
+    const o0 = polarPoint(cx,cy,rOuter,a0);
+    const o1 = polarPoint(cx,cy,rOuter,a1);
+    const i1 = polarPoint(cx,cy,rInner,a1);
+    const i0 = polarPoint(cx,cy,rInner,a0);
+    return `M ${o0.x} ${o0.y} A ${rOuter} ${rOuter} 0 0 1 ${o1.x} ${o1.y} L ${i1.x} ${i1.y} A ${rInner} ${rInner} 0 0 0 ${i0.x} ${i0.y} Z`;
+  }
+  function buildDifficultyGauge(){
+    const svg = document.getElementById('difficultyGauge');
+    const cx = 100, cy = 104, rOuter = 92, rInner = 54;
+    let html = '';
+    for(let v=1; v<=5; v++){
+      const a0 = 180 - (v-1)*36;
+      const a1 = 180 - v*36;
+      const path = wedgePath(cx,cy,rOuter,rInner,a0,a1);
+      const mid = polarPoint(cx,cy,(rOuter+rInner)/2,(a0+a1)/2);
+      html += `<path d="${path}" class="gauge-seg" data-v="${v}" style="color:var(--p${v})"></path>`;
+      html += `<text x="${mid.x}" y="${mid.y+4}" class="gauge-num" data-v="${v}">${v}</text>`;
+    }
+    svg.innerHTML = html;
+    svg.querySelectorAll('.gauge-seg, .gauge-num').forEach(el=>{
+      el.addEventListener('click', ()=> setDifficulty(Number(el.dataset.v)));
+    });
+  }
+  buildDifficultyGauge();
+
+  /* ============== EXPORT / IMPORT ============== */
+  function exportTasks(){
+    const payload = { type: 'dispatch-export', version: 1, exportedAt: new Date().toISOString(), tasks };
+    const json = JSON.stringify(payload, null, 2);
+
+    try{
+      const blob = new Blob([json], {type: 'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `dispatch-export-${todayKey()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }catch(e){ /* download not available, clipboard fallback below still helps */ }
+
+    let clipboardNote = '';
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(json).then(()=>{}).catch(()=>{});
+      clipboardNote = ' and copied to your clipboard';
+    }
+    appendMsg('system', `Exported ${tasks.length} task(s) as a .json file${clipboardNote}. Bring it to another device and use Import to bring them in.`);
+  }
+
+  function openImportModal(){
+    document.getElementById('importFile').value = '';
+    document.getElementById('importText').value = '';
+    document.getElementById('importError').style.display = 'none';
+    document.getElementById('importModalOverlay').classList.add('open');
+  }
+  function closeImportModal(){ document.getElementById('importModalOverlay').classList.remove('open'); }
+
+  function showImportError(msg){
+    const el = document.getElementById('importError');
+    el.textContent = msg;
+    el.style.display = 'block';
+  }
+
+  async function confirmImport(){
+    const raw = document.getElementById('importText').value.trim();
+    if(!raw){ showImportError('Choose a file or paste exported JSON first.'); return; }
+    let parsed;
+    try{ parsed = JSON.parse(raw); }
+    catch(e){ showImportError('That doesn\'t look like valid JSON — check the file or pasted text.'); return; }
+
+    const incoming = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.tasks) ? parsed.tasks : null);
+    if(!incoming){ showImportError('No tasks found in that file.'); return; }
+
+    let added = 0, skipped = 0;
+    incoming.forEach(it=>{
+      if(!it || !it.id || !it.title){ return; }
+      if(tasks.find(t=>t.id === it.id)){ skipped++; return; }
+      tasks.push(it);
+      added++;
+    });
+
+    await saveTasks();
+    closeImportModal();
+    render();
+    appendMsg('system', `Import complete — added ${added} new task(s)${skipped ? `, skipped ${skipped} already present` : ''}.`);
+  }
+
+  /* ============== MODAL ============== */
+  function openModal(t){
+    document.getElementById('modalTitle').textContent = t ? 'Edit Task' : 'New Task';
+    document.getElementById('editId').value = t ? t.id : '';
+    document.getElementById('fTitle').value = t ? t.title : '';
+    document.getElementById('fNotes').value = t ? (t.notes||'') : '';
+    setPriority(t ? t.priority : 3);
+    setDifficulty(t ? t.difficulty : 3);
+    document.getElementById('fTime').value = t ? t.estMinutes : 30;
+    document.getElementById('fDue').value = t ? (t.dueDate||'') : '';
+    document.getElementById('fDaily').checked = t ? !!t.daily : false;
+    document.getElementById('fWeekly').checked = t ? !!t.weekly : false;
+    setWeeklyDaysValue((t && t.weekly) ? weeklyDaysOf(t) : [new Date().getDay()]);
+    updateDueVisibility();
+    document.getElementById('fTags').value = t ? (t.tags||[]).join(', ') : '';
+    document.getElementById('modalOverlay').classList.add('open');
+    document.getElementById('fTitle').focus();
+  }
+  function closeModal(){ document.getElementById('modalOverlay').classList.remove('open'); }
+
+  let pendingSave = null;
+
+  async function saveTaskFromForm(){
+    const title = document.getElementById('fTitle').value.trim();
+    if(!title){ document.getElementById('fTitle').focus(); return; }
+    const id = document.getElementById('editId').value;
+    const tags = document.getElementById('fTags').value.split(',').map(s=>s.trim()).filter(Boolean);
+    const data = {
+      title,
+      notes: document.getElementById('fNotes').value.trim(),
+      priority: Number(document.getElementById('fPriority').value),
+      difficulty: Number(document.getElementById('fDifficulty').value),
+      estMinutes: Number(document.getElementById('fTime').value) || 5,
+      dueDate: document.getElementById('fDue').value || null,
+      daily: document.getElementById('fDaily').checked,
+      weekly: document.getElementById('fWeekly').checked,
+      weeklyDays: getWeeklyDaysValue().length ? getWeeklyDaysValue() : [new Date().getDay()],
+      tags
+    };
+
+    if(data.priority === 1){
+      const conflict = tasks.find(t => t.status === 'active' && t.priority === 1 && t.id !== id);
+      if(conflict){
+        pendingSave = { id, data };
+        document.getElementById('conflictTaskName').textContent = conflict.title;
+        document.getElementById('conflictModalOverlay').classList.add('open');
+        return;
+      }
+    }
+    await finalizeSave(id, data, null);
+  }
+
+  async function finalizeSave(id, data, bumpConflictId){
+    if(bumpConflictId){
+      const conflictTask = tasks.find(t => t.id === bumpConflictId);
+      if(conflictTask) conflictTask.priority = 2;
+    }
+    if(id){
+      const t = tasks.find(x=>x.id===id);
+      Object.assign(t, data);
+    } else {
+      tasks.push(Object.assign({
+        id: 'id-'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),
+        status:'active',
+        createdAt: new Date().toISOString()
+      }, data));
+    }
+    await saveTasks();
+    closeModal();
+    render();
+  }
+
+  /* ============== SECTION COLLAPSE ============== */
+  document.querySelectorAll('.section-label').forEach(label=>{
+    label.addEventListener('click', ()=>{
+      label.classList.toggle('collapsed');
+      const body = document.getElementById(label.dataset.target);
+      body.style.display = label.classList.contains('collapsed') ? 'none' : 'block';
+    });
+  });
+
+  /* ============== VOICE INPUT ============== */
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const micBtn = document.getElementById('micBtn');
+  if(SpeechRecognition){
+    recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = 'en-US';
+    micBtn.innerHTML = '🎙';
+    micBtn.addEventListener('click', ()=>{
+      if(recognizing){ recognition.stop(); return; }
+      try{ recognition.start(); }catch(e){}
+    });
+    recognition.onstart = ()=>{ recognizing = true; micBtn.classList.add('listening'); };
+    recognition.onend = ()=>{ recognizing = false; micBtn.classList.remove('listening'); };
+    recognition.onerror = ()=>{ recognizing = false; micBtn.classList.remove('listening'); };
+    recognition.onresult = (e)=>{
+      const text = e.results[0][0].transcript;
+      document.getElementById('chatInput').value = text;
+      sendChat();
+    };
+  } else {
+    micBtn.innerHTML = '🎙';
+    micBtn.disabled = true;
+    micBtn.title = 'Voice input is not supported in this browser';
+  }
+
+  function speak(text){
+    if(!('speechSynthesis' in window)) return;
+    if(!document.getElementById('speakToggle').checked) return;
+    const clean = text.replace(/SELECTED_TASK_ID:.*$/im, '').trim();
+    const u = new SpeechSynthesisUtterance(clean);
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(u);
+  }
+
+  /* ============== CHAT ============== */
+  const chipPrompts = [
+    "I've got 15 minutes and low energy",
+    "I have an hour and I'm sharp — give me something hard",
+    "What's overdue?",
+    "Give me a quick win"
+  ];
+  function renderChips(){
+    document.getElementById('chipsRow').innerHTML = chipPrompts.map(c=>
+      `<button class="chip-btn" data-prompt="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join('');
+    document.querySelectorAll('.chip-btn').forEach(b=>{
+      b.addEventListener('click', ()=>{
+        document.getElementById('chatInput').value = b.dataset.prompt;
+        sendChat();
+      });
+    });
+  }
+
+  function tsNow(){
+    return new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+  }
+
+  function appendMsg(role, content){
+    chatHistory.push({role, content, ts: tsNow()});
+    renderChat();
+    saveChat();
+  }
+
+  function renderChat(){
+    const log = document.getElementById('chatLog');
+    log.innerHTML = chatHistory.map(m=>{
+      if(m.role === 'system') return `<div class="msg system">${escapeHtml(m.content)}</div>`;
+      const display = m.role === 'assistant' ? m.content.replace(/SELECTED_TASK_ID:.*$/im,'').trim() : m.content;
+      return `<div class="msg ${m.role}"><span class="ts">${m.ts}</span>${escapeHtml(display)}</div>`;
+    }).join('');
+    log.scrollTop = log.scrollHeight;
+  }
+
+  async function sendChat(){
+    const input = document.getElementById('chatInput');
+    const text = input.value.trim();
+    if(!text) return;
+    input.value = '';
+    appendMsg('user', text);
+
+    const active = tasks.filter(t=>t.status==='active').map(t=>({
+      id: t.id, title: t.title, priority: t.priority, difficulty: t.difficulty,
+      estMinutes: t.estMinutes, tags: t.tags||[], daily: !!t.daily, weekly: !!t.weekly, weeklyRefreshDays: t.weekly ? weeklyDaysOf(t).map(d=>WEEKDAY_NAMES[d]) : null, dueDate: (t.daily||t.weekly) ? null : (t.dueDate||null), notes: t.notes||''
+    }));
+
+    if(active.length === 0){
+      appendMsg('assistant', "There's nothing active in the queue right now, so I don't have anything to recommend. Log a task first.");
+      return;
+    }
+
+    document.getElementById('apiStatus').textContent = 'thinking…';
+    document.getElementById('sendBtn').disabled = true;
+
+    const systemPrompt = `You are the assistant embedded in "Dispatch," a work-queue console. The user will describe how much time or energy they have, or ask a question about their queue. You are given their current active tasks as JSON. Priority is on a 1-5 scale where 1 is the HIGHEST priority (named "Top") and 5 is the LOWEST priority (named "Whatevs") — the scale runs Top(1), High(2), Medium(3), Low(4), Whatevs(5). Pick the single best-matching task for what they described and explain your pick in 2-4 warm, direct sentences, speaking to the user. If they ask a question that isn't about picking a task (e.g. "what's overdue?"), just answer it conversationally using the task data. Always end your reply on its own final line with exactly: SELECTED_TASK_ID: <id> — using the id of the task you are recommending or referencing most, or SELECTED_TASK_ID: none if no single task applies.
+
+Active tasks (JSON):
+${JSON.stringify(active)}`;
+
+    const apiMessages = chatHistory
+      .filter(m=>m.role==='user' || m.role==='assistant')
+      .slice(-10)
+      .map(m=>({role:m.role, content: m.content}));
+
+    try{
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6",
+          max_tokens: 400,
+          system: systemPrompt,
+          messages: apiMessages
+        })
+      });
+      const data = await response.json();
+      const textBlock = (data.content || []).find(b=>b.type==='text');
+      const replyText = textBlock ? textBlock.text : "I couldn't come up with a recommendation just now.";
+      appendMsg('assistant', replyText);
+
+      const match = replyText.match(/SELECTED_TASK_ID:\s*([a-zA-Z0-9\-]+)/i);
+      if(match && match[1] !== 'none' && tasks.find(t=>t.id===match[1])){
+        lastSuggestedId = match[1];
+        renderNextUp(tasks.filter(t=>t.status==='active'));
+      }
+      speak(replyText);
+      document.getElementById('apiStatus').textContent = '';
+    }catch(e){
+      appendMsg('assistant', "The queue assistant couldn't be reached — check your connection and try again.");
+      document.getElementById('apiStatus').textContent = 'offline';
+    }
+    document.getElementById('sendBtn').disabled = false;
+  }
+
+  /* ============== WIRE UP ============== */
+  document.getElementById('addTaskBtn').addEventListener('click', ()=>openModal(null));
+  document.getElementById('fabBtn').addEventListener('click', ()=>openModal(null));
+  document.getElementById('exportBtn').addEventListener('click', exportTasks);
+  document.getElementById('importBtn').addEventListener('click', openImportModal);
+  document.getElementById('cancelImportBtn').addEventListener('click', closeImportModal);
+  document.getElementById('confirmImportBtn').addEventListener('click', confirmImport);
+  document.getElementById('importModalOverlay').addEventListener('click', (e)=>{ if(e.target.id==='importModalOverlay') closeImportModal(); });
+  document.getElementById('importFile').addEventListener('change', (e)=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = () => { document.getElementById('importText').value = reader.result; };
+    reader.onerror = () => showImportError('Could not read that file.');
+    reader.readAsText(file);
+  });
+  document.getElementById('cancelModalBtn').addEventListener('click', closeModal);
+  document.getElementById('modalOverlay').addEventListener('click', (e)=>{ if(e.target.id==='modalOverlay') closeModal(); });
+  document.getElementById('saveTaskBtn').addEventListener('click', saveTaskFromForm);
+  function getWeeklyDaysValue(){
+    return document.getElementById('fWeeklyDays').value.split(',').filter(s=>s!=='').map(Number);
+  }
+  function setWeeklyDaysValue(arr){
+    document.getElementById('fWeeklyDays').value = arr.slice().sort((a,b)=>a-b).join(',');
+    document.querySelectorAll('.weekday-btn').forEach(b=>{
+      b.classList.toggle('selected', arr.includes(Number(b.dataset.day)));
+    });
+  }
+  function toggleWeeklyDay(d){
+    const arr = getWeeklyDaysValue();
+    const idx = arr.indexOf(d);
+    if(idx === -1) arr.push(d); else arr.splice(idx,1);
+    setWeeklyDaysValue(arr);
+  }
+  document.querySelectorAll('.weekday-btn').forEach(b=>{
+    b.addEventListener('click', ()=> toggleWeeklyDay(Number(b.dataset.day)));
+  });
+
+  function updateDueVisibility(){
+    const daily = document.getElementById('fDaily').checked;
+    const weekly = document.getElementById('fWeekly').checked;
+    document.getElementById('fDue').style.display = (daily || weekly) ? 'none' : 'block';
+    document.getElementById('weekdayPicker').style.display = weekly ? 'flex' : 'none';
+    document.getElementById('dueDateLabel').textContent = weekly ? 'Refreshes on' : 'Due date';
+  }
+  document.getElementById('fDaily').addEventListener('change', e=>{
+    if(e.target.checked) document.getElementById('fWeekly').checked = false;
+    updateDueVisibility();
+  });
+  document.getElementById('fWeekly').addEventListener('change', e=>{
+    if(e.target.checked){
+      document.getElementById('fDaily').checked = false;
+      setWeeklyDaysValue([new Date().getDay()]);
+    }
+    updateDueVisibility();
+  });
+  document.getElementById('sortSelect').addEventListener('change', render);
+  document.getElementById('searchInput').addEventListener('input', render);
+  document.getElementById('rerollBtn').addEventListener('click', ()=>{
+    const active = tasks.filter(t=>t.status==='active');
+    if(active.length < 2){ return; }
+    const others = active.filter(t=>t.id!==lastSuggestedId);
+    lastSuggestedId = others[Math.floor(Math.random()*others.length)].id;
+    renderNextUp(active);
+  });
+  document.getElementById('sendBtn').addEventListener('click', sendChat);
+  document.getElementById('chatInput').addEventListener('keydown', e=>{ if(e.key==='Enter') sendChat(); });
+
+  document.getElementById('cancelHoldBtn').addEventListener('click', closeHoldModal);
+  document.getElementById('holdModalOverlay').addEventListener('click', (e)=>{ if(e.target.id==='holdModalOverlay') closeHoldModal(); });
+  document.querySelectorAll('.hold-options button').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const val = btn.dataset.mins;
+      let until;
+      if(val === 'tomorrow'){
+        const d = new Date(); d.setDate(d.getDate()+1); d.setHours(9,0,0,0);
+        until = d.toISOString();
+      } else {
+        until = new Date(Date.now() + Number(val)*60000).toISOString();
+      }
+      confirmHold(until);
+    });
+  });
+  document.getElementById('confirmHoldBtn').addEventListener('click', ()=>{
+    const val = document.getElementById('holdCustomDay').value;
+    if(!val) return;
+    confirmHoldDay(val);
+  });
+
+  document.getElementById('conflictConfirmBtn').addEventListener('click', async ()=>{
+    if(!pendingSave) return;
+    const conflict = tasks.find(t => t.status === 'active' && t.priority === 1 && t.id !== pendingSave.id);
+    document.getElementById('conflictModalOverlay').classList.remove('open');
+    await finalizeSave(pendingSave.id, pendingSave.data, conflict ? conflict.id : null);
+    pendingSave = null;
+  });
+  document.getElementById('conflictCancelBtn').addEventListener('click', async ()=>{
+    if(!pendingSave) return;
+    pendingSave.data.priority = 2;
+    document.getElementById('conflictModalOverlay').classList.remove('open');
+    await finalizeSave(pendingSave.id, pendingSave.data, null);
+    pendingSave = null;
+  });
+
+  /* ============== INIT ============== */
+  async function init(){
+    renderChips();
+    await loadTasks();
+    await loadChat();
+    if(chatHistory.length === 0){
+      appendMsg('system', 'Tell the queue what time or energy you have, or tap the mic to talk.');
+    } else {
+      renderChat();
+    }
+    render();
+
+    setInterval(async ()=>{
+      const changed = await reactivateExpired();
+      if(changed){ await saveTasks(); render(); }
+    }, 30000);
+  }
+  init();
+})();
+</script>
+</body>
+</html>
