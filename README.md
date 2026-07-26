@@ -2,7 +2,7 @@
 
 Dispatch is a single-file web app for managing a personal work portfolio: log tasks with priority, difficulty, and time estimates, and let the app suggest what to work on next based on a scoring system — or just ask it in plain language.
 
-**Current version: v1.6.3** (shown in the app header; see [Version History](#version-history) below)
+**Current version: v1.7.0** (shown in the app header; see [Version History](#version-history) below)
 
 ## Features
 
@@ -33,7 +33,7 @@ Open `dispatch.html` as a Claude artifact (e.g. by uploading it into a claude.ai
 
 Just open `dispatch.html` directly (double-click it, or drag it into a browser tab). In this mode:
 - Task and chat data are saved to that browser's **`localStorage`** automatically — persisting across sessions on that device/browser, but **not syncing** to other devices or browsers.
-- The **chat assistant will not work** — it calls `https://api.anthropic.com/v1/messages` directly from the page with no API key attached, which only succeeds inside Claude's own environment. Everything else (task tracking, scoring, hold/daily/weekly, export/import, voice input for dictation) works fully offline.
+- The **chat assistant will not work** — it calls `https://api.anthropic.com/v1/messages` directly from the page, which only succeeds inside Claude's own environment out of the box, **unless** you supply your own Anthropic API key. When running standalone, a small "Ask the Queue" settings box appears where you can paste a key from [console.anthropic.com](https://console.anthropic.com); it's stored only in that browser's `localStorage` (via the `anthropic-dangerous-direct-browser-access` header for a "bring your own key" client-side pattern) — it is never written into this file, uploaded, or included in an Export. **Never hardcode a real API key into `dispatch.html` itself, especially before committing it to a public repo** — always enter it through that box at runtime instead. Everything else (task tracking, scoring, hold/daily/weekly, export/import, voice input for dictation) works fully offline regardless.
 
 ### Moving data between copies
 
@@ -65,9 +65,11 @@ score = (6 − priority) × 22 − difficulty × 6 − min(estMinutes, 240) / 24
 | v1.6.1 | Added "Reactivate" button for closed (Done) tasks |
 | v1.6.2 | Task add/edit modal no longer closes when clicking outside it |
 | v1.6.3 | Voice input errors now surface a message instead of failing silently |
+| v1.7.0 | Standalone mode can use the chat assistant via a user-supplied Anthropic API key (browser-local only) |
 
 ## Notes & Limitations
 
 - This is a single self-contained HTML file — no build step, no dependencies to install.
+- **Security note**: if you use the standalone BYO-API-key option, that key lives only in your browser's `localStorage` — it is never part of this file's source. Don't paste a real key anywhere in `dispatch.html` itself before committing it to version control.
 - Voice input relies on the browser's built-in speech recognition (best support in Chrome/Edge; limited in Firefox/Safari). When run inside Claude's artifact preview, the sandboxed environment may block microphone access entirely — if voice input doesn't work there, try the standalone downloaded file in a regular browser tab instead.
 - There's no encryption or account system — anyone with access to the file/browser profile can see the stored tasks.
