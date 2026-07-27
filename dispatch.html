@@ -14,6 +14,8 @@
   v1.6.2  Task add/edit modal no longer closes when clicking outside it
   v1.6.3  Voice input errors now surface a message instead of failing silently
   v1.7.0  Standalone mode can now use the chat assistant via a user-supplied Anthropic API key (stored only in that browser's localStorage, direct-browser-access header)
+  v1.7.1  Cost reduction: compact pipe-delimited task format (~50% fewer tokens) instead of verbose JSON; standalone mode uses Claude Haiku 4.5 instead of Sonnet 4.6 (~3x cheaper per token)
+  v1.7.2  Fixed due-date bug: "due today/tomorrow" and the score bonus no longer flip around noon (was using fractional elapsed time instead of calendar-date comparison)
   -- bump this on every future change, and add a line above --
 -->
 <html lang="en">
@@ -219,7 +221,7 @@
       <div class="brand-mark">D</div>
       <div>
         <h1>Dispatch</h1>
-        <div class="tag">work queue console · v1.7.0</div>
+        <div class="tag">work queue console · v1.7.2</div>
       </div>
     </div>
     <div class="stats">
@@ -527,13 +529,21 @@
   }
 
 
+  function daysUntil(dateStr){
+    const [y,m,d] = dateStr.split('-').map(Number);
+    const due = new Date(y, m-1, d);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return Math.round((due - today) / 86400000);
+  }
+
   /* ============== SCORING ============== */
   function computeScore(t){
     let score = (6 - t.priority) * 22 - t.difficulty * 6 - Math.min(t.estMinutes,240)/240*20;
     if(t.daily || t.weekly){
       score += 33;
     } else if(t.dueDate){
-      const days = (new Date(t.dueDate+'T23:59:59') - new Date()) / 86400000;
+      const days = daysUntil(t.dueDate);
       if(days < 0) score += 45;
       else if(days <= 1) score += 32;
       else if(days <= 3) score += 16;
@@ -552,7 +562,7 @@
     return rem ? h+'h '+rem+'m' : h+'h';
   }
   function fmtDue(d){
-    const days = Math.round((new Date(d+'T23:59:59') - new Date()) / 86400000);
+    const days = daysUntil(d);
     if(days < 0) return {label:'overdue', cls:'overdue'};
     if(days === 0) return {label:'due today', cls:'due'};
     if(days === 1) return {label:'due tomorrow', cls:'due'};
@@ -1074,10 +1084,7 @@
     input.value = '';
     appendMsg('user', text);
 
-    const active = tasks.filter(t=>t.status==='active').map(t=>({
-      id: t.id, title: t.title, priority: t.priority, difficulty: t.difficulty,
-      estMinutes: t.estMinutes, tags: t.tags||[], daily: !!t.daily, weekly: !!t.weekly, weeklyRefreshDays: t.weekly ? weeklyDaysOf(t).map(d=>WEEKDAY_NAMES[d]) : null, dueDate: (t.daily||t.weekly) ? null : (t.dueDate||null), notes: t.notes||''
-    }));
+    const active = tasks.filter(t=>t.status==='active');
 
     if(active.length === 0){
       appendMsg('assistant', "There's nothing active in the queue right now, so I don't have anything to recommend. Log a task first.");
@@ -1092,10 +1099,18 @@
     document.getElementById('apiStatus').textContent = 'thinking…';
     document.getElementById('sendBtn').disabled = true;
 
-    const systemPrompt = `You are the assistant embedded in "Dispatch," a work-queue console. The user will describe how much time or energy they have, or ask a question about their queue. You are given their current active tasks as JSON. Priority is on a 1-5 scale where 1 is the HIGHEST priority (named "Top") and 5 is the LOWEST priority (named "Whatevs") — the scale runs Top(1), High(2), Medium(3), Low(4), Whatevs(5). Pick the single best-matching task for what they described and explain your pick in 2-4 warm, direct sentences, speaking to the user. If they ask a question that isn't about picking a task (e.g. "what's overdue?"), just answer it conversationally using the task data. Always end your reply on its own final line with exactly: SELECTED_TASK_ID: <id> — using the id of the task you are recommending or referencing most, or SELECTED_TASK_ID: none if no single task applies.
+    function compactTaskLine(t){
+      const recur = t.daily ? 'Daily' : t.weekly ? ('Weekly:'+weeklyDaysOf(t).map(d=>WEEKDAY_NAMES[d]).join(',')) : (t.dueDate ? ('due '+t.dueDate) : '-');
+      const tagStr = (t.tags && t.tags.length) ? t.tags.join(',') : '-';
+      const notesStr = t.notes ? t.notes.slice(0,120) : '-';
+      return `${t.id} | ${priorityName(t.priority)} | diff${t.difficulty} | ${t.estMinutes}m | ${recur} | ${tagStr} | ${t.title} | ${notesStr}`;
+    }
+    const taskLines = active.map(compactTaskLine).join('\n');
 
-Active tasks (JSON):
-${JSON.stringify(active)}`;
+    const systemPrompt = `You are the assistant embedded in "Dispatch," a work-queue console. The user will describe how much time or energy they have, or ask a question about their queue. You are given their current active tasks, one per line, in this column order separated by " | ": id, priority (Top=highest ... Whatevs=lowest, scale: Top,High,Medium,Low,Whatevs), difficulty (diff1-diff5), estimated minutes, recurrence-or-due-date ("-" if none), tags ("-" if none), title, notes ("-" if none). Pick the single best-matching task for what they described and explain your pick in 2-4 warm, direct sentences, speaking to the user. If they ask a question that isn't about picking a task (e.g. "what's overdue?"), just answer it conversationally using the task data. Always end your reply on its own final line with exactly: SELECTED_TASK_ID: <id> — using the id of the task you are recommending or referencing most, or SELECTED_TASK_ID: none if no single task applies.
+
+Active tasks:
+${taskLines}`;
 
     const apiMessages = chatHistory
       .filter(m=>m.role==='user' || m.role==='assistant')
@@ -1108,13 +1123,16 @@ ${JSON.stringify(active)}`;
       headers["anthropic-version"] = "2023-06-01";
       headers["anthropic-dangerous-direct-browser-access"] = "true";
     }
+    // Inside Claude, artifact API calls must use Sonnet 4.6. Standalone (BYO key) calls are real
+    // pay-per-token requests, so use the cheaper Haiku 4.5 there to keep costs down.
+    const chatModel = hasCloudStorage ? "claude-sonnet-4-6" : "claude-haiku-4-5-20251001";
 
     try{
       const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers,
         body: JSON.stringify({
-          model: "claude-sonnet-4-6",
+          model: chatModel,
           max_tokens: 400,
           system: systemPrompt,
           messages: apiMessages

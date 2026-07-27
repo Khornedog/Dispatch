@@ -2,7 +2,7 @@
 
 Dispatch is a single-file web app for managing a personal work portfolio: log tasks with priority, difficulty, and time estimates, and let the app suggest what to work on next based on a scoring system — or just ask it in plain language.
 
-**Current version: v1.7.0** (shown in the app header; see [Version History](#version-history) below)
+**Current version: v1.7.2** (shown in the app header; see [Version History](#version-history) below)
 
 ## Features
 
@@ -18,7 +18,7 @@ Dispatch is a single-file web app for managing a personal work portfolio: log ta
 - **Recurring tasks**:
   - **Daily** — reactivates the next day after being marked Done.
   - **Weekly** — pick one or more days of the week; reactivates on the next occurrence of any selected day after being marked Done.
-- **Chat assistant ("Ask the Queue")** — describe how much time or energy you have, and it recommends the best-fitting active task, using the Anthropic API. Supports voice input (browser speech recognition) and optional spoken replies.
+- **Chat assistant ("Ask the Queue")** — describe how much time or energy you have, and it recommends the best-fitting active task, using the Anthropic API. Supports voice input (browser speech recognition) and optional spoken replies. Only your active (non-Hold/Parked/De-prioritized/Closed) tasks are ever sent to the API. In standalone mode with a personal API key, each message typically costs well under a cent (Haiku 4.5 pricing, compact task format) — cost scales mainly with how many active tasks you have, since the whole active list is resent each message.
 - **Export / Import** — download your task list as a `.json` file (also copied to clipboard) and import it elsewhere, merging in anything new without touching existing tasks.
 
 ## Getting Started
@@ -66,6 +66,8 @@ score = (6 − priority) × 22 − difficulty × 6 − min(estMinutes, 240) / 24
 | v1.6.2 | Task add/edit modal no longer closes when clicking outside it |
 | v1.6.3 | Voice input errors now surface a message instead of failing silently |
 | v1.7.0 | Standalone mode can use the chat assistant via a user-supplied Anthropic API key (browser-local only) |
+| v1.7.1 | Cost reduction: compact task format (~50% fewer tokens) and Haiku 4.5 for standalone mode (~3x cheaper) |
+| v1.7.2 | Fixed "due today/tomorrow" and score bonus flipping around noon (calendar-date comparison instead of elapsed time) |
 
 ## Notes & Limitations
 
