@@ -16,6 +16,8 @@
   v1.7.0  Standalone mode can now use the chat assistant via a user-supplied Anthropic API key (stored only in that browser's localStorage, direct-browser-access header)
   v1.7.1  Cost reduction: compact pipe-delimited task format (~50% fewer tokens) instead of verbose JSON; standalone mode uses Claude Haiku 4.5 instead of Sonnet 4.6 (~3x cheaper per token)
   v1.7.2  Fixed due-date bug: "due today/tomorrow" and the score bonus no longer flip around noon (was using fractional elapsed time instead of calendar-date comparison)
+  v1.8.0  Added Difficulty (easiest/hardest first) sort options; added toggleable Daily/Weekly filter buttons for the active queue
+  v1.9.0  Added "Quick Match" quadrant buttons (Low/High Energy x Little/Lots of Time) above Ask the Queue — instantly sets Next Up to the highest-scoring match with no API call, cascading through quadrants 4>3>2>1 if the clicked one is empty
   -- bump this on every future change, and add a line above --
 -->
 <html lang="en">
@@ -97,6 +99,15 @@
   .btn:hover{ border-color:var(--amber); color:var(--amber); }
   .btn-primary{ background:var(--amber); border-color:var(--amber); color:#171310; }
   .btn-primary:hover{ background:#f0b455; color:#171310; filter:none; }
+  .btn.toggle-active{ background:var(--teal); border-color:var(--teal); color:#0d1a19; }
+  .btn.toggle-active:hover{ background:var(--teal); color:#0d1a19; }
+
+  .quadrant-grid{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .quadrant-btn{ background:var(--panel-2); border:1px solid var(--border); border-radius:6px; padding:12px 8px; display:flex; flex-direction:column; align-items:center; gap:3px; transition:all .12s; }
+  .quadrant-btn:hover{ border-color:var(--amber); background:rgba(226,166,59,0.08); }
+  .quadrant-btn:active{ transform:scale(0.97); }
+  .quadrant-btn .q-label{ font-size:12.5px; font-weight:700; color:var(--text); }
+  .quadrant-btn .q-sub{ font-size:10.5px; color:var(--text-dim); }
   .btn-ghost{ background:transparent; border-color:transparent; color:var(--text-dim); }
   .btn-ghost:hover{ color:var(--text); border-color:var(--border); }
   .btn-sm{ padding:5px 10px; font-size:11.5px; }
@@ -221,7 +232,7 @@
       <div class="brand-mark">D</div>
       <div>
         <h1>Dispatch</h1>
-        <div class="tag">work queue console · v1.7.2</div>
+        <div class="tag">work queue console · v1.9.0</div>
       </div>
     </div>
     <div class="stats">
@@ -245,8 +256,12 @@
             <option value="priority">Sort: Priority</option>
             <option value="time">Sort: Time (shortest first)</option>
             <option value="due">Sort: Due date</option>
+            <option value="difficulty-asc">Sort: Difficulty (easiest first)</option>
+            <option value="difficulty-desc">Sort: Difficulty (hardest first)</option>
           </select>
           <input type="text" id="searchInput" placeholder="Filter by title or tag…">
+          <button class="btn btn-sm" id="filterDailyBtn" type="button">Daily</button>
+          <button class="btn btn-sm" id="filterWeeklyBtn" type="button">Weekly</button>
           <div class="spacer"></div>
           <button class="btn btn-sm" id="exportBtn">Export</button>
           <button class="btn btn-sm" id="importBtn">Import</button>
@@ -270,6 +285,24 @@
     </div>
 
     <div>
+      <div class="panel">
+        <div class="panel-title"><h2>Quick Match</h2><span class="mono" style="font-size:10px;color:var(--text-faint);">no API — instant</span></div>
+        <div class="quadrant-grid">
+          <button class="quadrant-btn" id="quadBtn1" data-q="1">
+            <span class="q-label">Low Energy</span><span class="q-sub">Little Time</span>
+          </button>
+          <button class="quadrant-btn" id="quadBtn2" data-q="2">
+            <span class="q-label">Low Energy</span><span class="q-sub">Lots of Time</span>
+          </button>
+          <button class="quadrant-btn" id="quadBtn3" data-q="3">
+            <span class="q-label">High Energy</span><span class="q-sub">Little Time</span>
+          </button>
+          <button class="quadrant-btn" id="quadBtn4" data-q="4">
+            <span class="q-label">High Energy</span><span class="q-sub">Lots of Time</span>
+          </button>
+        </div>
+      </div>
+
       <div class="panel">
         <div class="panel-title"><h2>Ask the Queue</h2><span class="mono" style="font-size:10px;color:var(--text-faint);">voice-enabled</span></div>
         <div id="apiKeyRow" style="display:none; margin-bottom:12px; padding:10px; background:var(--panel-2); border:1px solid var(--border); border-radius:6px;">
@@ -423,6 +456,8 @@
   let recognizing = false;
   let recognition = null;
   let lastSuggestedId = null;
+  let dailyFilterOn = false;
+  let weeklyFilterOn = false;
 
   function localDateKey(d){
     const y = d.getFullYear();
@@ -607,16 +642,22 @@
     // filter/sort
     const q = document.getElementById('searchInput').value.trim().toLowerCase();
     let list = active.filter(t => !q || t.title.toLowerCase().includes(q) || (t.tags||[]).some(tag=>tag.toLowerCase().includes(q)));
+    if(dailyFilterOn || weeklyFilterOn){
+      list = list.filter(t => (dailyFilterOn && t.daily) || (weeklyFilterOn && t.weekly));
+    }
     const sortMode = document.getElementById('sortSelect').value;
     list.sort((a,b)=>{
       if(sortMode==='priority') return a.priority - b.priority || computeScore(b)-computeScore(a);
       if(sortMode==='time') return a.estMinutes - b.estMinutes;
       if(sortMode==='due') return (a.dueDate||'9999') > (b.dueDate||'9999') ? 1 : -1;
+      if(sortMode==='difficulty-asc') return a.difficulty - b.difficulty || computeScore(b)-computeScore(a);
+      if(sortMode==='difficulty-desc') return b.difficulty - a.difficulty || computeScore(b)-computeScore(a);
       return computeScore(b) - computeScore(a);
     });
 
     renderList('activeList', list, active.length===0 ?
-      '<div class="empty"><b>The queue is clear.</b>Log a task to start building your work portfolio.</div>' : '');
+      '<div class="empty"><b>The queue is clear.</b>Log a task to start building your work portfolio.</div>' :
+      (list.length===0 ? '<div class="empty">Nothing matches the current filters.</div>' : ''));
 
     document.getElementById('holdCount').textContent = onhold.length;
     renderList('holdBody', onhold, onhold.length===0 ? '<div class="empty">Nothing on hold. Set a task aside and it\'ll return to rotation when the timer\'s up.</div>' : '');
@@ -722,6 +763,43 @@
           <button class="btn btn-sm" onclick="Dispatch.setStatus('${candidate.id}','parked')">Done for Day</button>
         </div>
       </div>`;
+  }
+
+  /* ============== QUICK MATCH (quadrant shortcuts, no API) ============== */
+  function matchesQuadrant(t, q){
+    const lowEnergy = t.difficulty <= 3;
+    const littleTime = t.estMinutes <= 30;
+    if(q === 1) return lowEnergy && littleTime;
+    if(q === 2) return lowEnergy && !littleTime;
+    if(q === 3) return !lowEnergy && littleTime;
+    if(q === 4) return !lowEnergy && !littleTime;
+    return false;
+  }
+  function bestForQuadrant(startQ){
+    const active = tasks.filter(t=>t.status==='active');
+    for(let q = startQ; q >= 1; q--){
+      const matches = active.filter(t => matchesQuadrant(t, q));
+      if(matches.length){
+        return matches.sort((a,b)=>computeScore(b)-computeScore(a))[0];
+      }
+    }
+    return null;
+  }
+  function handleQuadrantClick(q){
+    const active = tasks.filter(t=>t.status==='active');
+    if(active.length === 0){
+      renderNextUp(active);
+      return;
+    }
+    const best = bestForQuadrant(q);
+    if(best){
+      lastSuggestedId = best.id;
+      renderNextUp(active);
+    } else {
+      lastSuggestedId = null;
+      document.getElementById('nextUpBody').innerHTML =
+        '<div class="nextup-empty">No active tasks match that combination right now.</div>';
+    }
   }
 
   function escapeHtml(s){
@@ -1222,12 +1300,25 @@ ${taskLines}`;
   });
   document.getElementById('sortSelect').addEventListener('change', render);
   document.getElementById('searchInput').addEventListener('input', render);
+  document.getElementById('filterDailyBtn').addEventListener('click', ()=>{
+    dailyFilterOn = !dailyFilterOn;
+    document.getElementById('filterDailyBtn').classList.toggle('toggle-active', dailyFilterOn);
+    render();
+  });
+  document.getElementById('filterWeeklyBtn').addEventListener('click', ()=>{
+    weeklyFilterOn = !weeklyFilterOn;
+    document.getElementById('filterWeeklyBtn').classList.toggle('toggle-active', weeklyFilterOn);
+    render();
+  });
   document.getElementById('rerollBtn').addEventListener('click', ()=>{
     const active = tasks.filter(t=>t.status==='active');
     if(active.length < 2){ return; }
     const others = active.filter(t=>t.id!==lastSuggestedId);
     lastSuggestedId = others[Math.floor(Math.random()*others.length)].id;
     renderNextUp(active);
+  });
+  [1,2,3,4].forEach(q=>{
+    document.getElementById('quadBtn'+q).addEventListener('click', ()=> handleQuadrantClick(q));
   });
   document.getElementById('sendBtn').addEventListener('click', sendChat);
 

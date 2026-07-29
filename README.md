@@ -2,7 +2,7 @@
 
 Dispatch is a single-file web app for managing a personal work portfolio: log tasks with priority, difficulty, and time estimates, and let the app suggest what to work on next based on a scoring system — or just ask it in plain language.
 
-**Current version: v1.7.2** (shown in the app header; see [Version History](#version-history) below)
+**Current version: v1.9.0** (shown in the app header; see [Version History](#version-history) below)
 
 ## Features
 
@@ -10,6 +10,7 @@ Dispatch is a single-file web app for managing a personal work portfolio: log ta
 - **Priority scale** — five named levels instead of raw numbers: **Top, High, Medium, Low, Whatevs** (Top = highest). Only one task can be Top at a time; setting a second Top prompts you to confirm the swap.
 - **Difficulty gauge** — a half-moon dial (Easy → Hard) instead of a plain slider, color-coded on the same scale as priority.
 - **Automatic scoring & "Next Up"** — every task gets a numeric score from priority, difficulty, time, and due-date urgency; the top-scoring task is surfaced as a recommendation, with a "Reroll" option.
+- **Quick Match** — four one-tap buttons (Low/High Energy × Little/Lots of Time, split at difficulty 3 and 30 minutes) that instantly set Next Up to the best-scoring task matching that combination — no API call, no cost. If the chosen combination has no matching task, it cascades down through the other combinations (checking Low Energy + Little Time last) before giving up.
 - **Status actions**:
   - **Done** — closes the task (can be manually reactivated later from the Closed section if needed).
   - **Done for Day** — removes it from today's queue; it reactivates automatically the next calendar day.
@@ -68,6 +69,8 @@ score = (6 − priority) × 22 − difficulty × 6 − min(estMinutes, 240) / 24
 | v1.7.0 | Standalone mode can use the chat assistant via a user-supplied Anthropic API key (browser-local only) |
 | v1.7.1 | Cost reduction: compact task format (~50% fewer tokens) and Haiku 4.5 for standalone mode (~3x cheaper) |
 | v1.7.2 | Fixed "due today/tomorrow" and score bonus flipping around noon (calendar-date comparison instead of elapsed time) |
+| v1.8.0 | Added Difficulty (easiest/hardest first) sort options; toggleable Daily/Weekly filter buttons |
+| v1.9.0 | Added "Quick Match" quadrant buttons — instant, no-API alternative to Ask the Queue that sets Next Up based on energy/time |
 
 ## Notes & Limitations
 
