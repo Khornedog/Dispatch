@@ -2,7 +2,7 @@
 
 Dispatch is a single-file web app for managing a personal work portfolio: log tasks with priority, difficulty, and time estimates, and let the app suggest what to work on next based on a scoring system — or just ask it in plain language.
 
-**Current version: v2.0.0** (shown in the app header; see [Version History](#version-history) below)
+**Current version: v2.1.1** (shown in the app header; see [Version History](#version-history) below)
 
 ## Features
 
@@ -72,6 +72,8 @@ score = (6 − priority) × 22 − difficulty × 6 − min(estMinutes, 240) / 24
 | v1.8.0 | Added Difficulty (easiest/hardest first) sort options; toggleable Daily/Weekly filter buttons |
 | v1.9.0 | Added "Quick Match" quadrant buttons — instant, no-API alternative to Ask the Queue that sets Next Up based on energy/time |
 | v2.0.0 | Next Up card is fully editable in place (title, notes, priority, difficulty, time, recurrence, tags) with auto-save |
+| v2.1.0 | Quick Match moved beside Next Up (still a 2x2 grid); added escalating color coding across the four quadrant buttons |
+| v2.1.1 | Quick Match buttons are now square; Next Up notes field defaults to a 6-line height |
 
 ## Notes & Limitations
 

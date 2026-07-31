@@ -19,6 +19,8 @@
   v1.8.0  Added Difficulty (easiest/hardest first) sort options; added toggleable Daily/Weekly filter buttons for the active queue
   v1.9.0  Added "Quick Match" quadrant buttons (Low/High Energy x Little/Lots of Time) above Ask the Queue — instantly sets Next Up to the highest-scoring match with no API call, cascading through quadrants 4>3>2>1 if the clicked one is empty
   v2.0.0  Next Up card is now fully editable in place (title, notes, priority, difficulty, time, daily/weekly/due date, tags) with auto-save, instead of a read-only summary
+  v2.1.0  Moved Quick Match to sit beside Next Up (2x2 quadrant grid, unchanged) instead of above Ask the Queue; added escalating teal->green->amber->red color coding across the four quadrant buttons
+  v2.1.1  Quick Match buttons are now square; Next Up notes field defaults to a 6-line height
   -- bump this on every future change, and add a line above --
 -->
 <html lang="en">
@@ -80,7 +82,8 @@
 
   /* ---------- Layout ---------- */
   .grid{ display:grid; grid-template-columns: 1fr 340px; gap:20px; align-items:start; }
-  @media (max-width: 880px){ .grid{ grid-template-columns: 1fr; } }
+  .grid-nextup{ grid-template-columns: 2.4fr 1fr; }
+  @media (max-width: 880px){ .grid{ grid-template-columns: 1fr; } .grid-nextup{ grid-template-columns: 1fr; } }
 
   /* ---------- Panels ---------- */
   .panel{ background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:18px; }
@@ -104,11 +107,23 @@
   .btn.toggle-active:hover{ background:var(--teal); color:#0d1a19; }
 
   .quadrant-grid{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
-  .quadrant-btn{ background:var(--panel-2); border:1px solid var(--border); border-radius:6px; padding:12px 8px; display:flex; flex-direction:column; align-items:center; gap:3px; transition:all .12s; }
+  .quadrant-btn{ background:var(--panel-2); border:1px solid var(--border); border-radius:6px; padding:8px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; transition:all .12s; aspect-ratio:1/1; }
   .quadrant-btn:hover{ border-color:var(--amber); background:rgba(226,166,59,0.08); }
   .quadrant-btn:active{ transform:scale(0.97); }
   .quadrant-btn .q-label{ font-size:12.5px; font-weight:700; color:var(--text); }
   .quadrant-btn .q-sub{ font-size:10.5px; color:var(--text-dim); }
+  .quadrant-btn.quad-1{ background:rgba(78,158,151,0.14); border-color:var(--p1); }
+  .quadrant-btn.quad-1 .q-label, .quadrant-btn.quad-1 .q-sub{ color:var(--p1); }
+  .quadrant-btn.quad-2{ background:rgba(111,169,107,0.14); border-color:var(--p2); }
+  .quadrant-btn.quad-2 .q-label, .quadrant-btn.quad-2 .q-sub{ color:var(--p2); }
+  .quadrant-btn.quad-3{ background:rgba(217,138,61,0.14); border-color:var(--p4); }
+  .quadrant-btn.quad-3 .q-label, .quadrant-btn.quad-3 .q-sub{ color:var(--p4); }
+  .quadrant-btn.quad-4{ background:rgba(193,82,61,0.14); border-color:var(--p5); }
+  .quadrant-btn.quad-4 .q-label, .quadrant-btn.quad-4 .q-sub{ color:var(--p5); }
+  .quadrant-btn.quad-1:hover{ background:rgba(78,158,151,0.24); }
+  .quadrant-btn.quad-2:hover{ background:rgba(111,169,107,0.24); }
+  .quadrant-btn.quad-3:hover{ background:rgba(217,138,61,0.24); }
+  .quadrant-btn.quad-4:hover{ background:rgba(193,82,61,0.24); }
 
   .nu-saved{ font-size:10px; color:var(--teal); opacity:0; transition:opacity .3s; }
   .nu-saved.show{ opacity:1; }
@@ -251,7 +266,7 @@
       <div class="brand-mark">D</div>
       <div>
         <h1>Dispatch</h1>
-        <div class="tag">work queue console · v2.0.0</div>
+        <div class="tag">work queue console · v2.1.1</div>
       </div>
     </div>
     <div class="stats">
@@ -261,9 +276,29 @@
     </div>
   </div>
 
-  <div class="panel nextup" id="nextUpPanel">
-    <div class="panel-title"><h2>Next Up</h2><div style="display:flex;align-items:center;gap:10px;"><span id="nuSavedIndicator" class="nu-saved">Saved</span><button class="btn btn-sm" id="rerollBtn">Reroll</button></div></div>
-    <div id="nextUpBody"><div class="nextup-empty">Queue is empty. Log a task to get a recommendation.</div></div>
+  <div class="grid grid-nextup">
+    <div class="panel nextup" id="nextUpPanel">
+      <div class="panel-title"><h2>Next Up</h2><div style="display:flex;align-items:center;gap:10px;"><span id="nuSavedIndicator" class="nu-saved">Saved</span><button class="btn btn-sm" id="rerollBtn">Reroll</button></div></div>
+      <div id="nextUpBody"><div class="nextup-empty">Queue is empty. Log a task to get a recommendation.</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title"><h2>Quick Match</h2><span class="mono" style="font-size:10px;color:var(--text-faint);">no API — instant</span></div>
+      <div class="quadrant-grid">
+        <button class="quadrant-btn quad-1" id="quadBtn1" data-q="1">
+          <span class="q-label">Low Energy</span><span class="q-sub">Little Time</span>
+        </button>
+        <button class="quadrant-btn quad-2" id="quadBtn2" data-q="2">
+          <span class="q-label">Low Energy</span><span class="q-sub">Lots of Time</span>
+        </button>
+        <button class="quadrant-btn quad-3" id="quadBtn3" data-q="3">
+          <span class="q-label">High Energy</span><span class="q-sub">Little Time</span>
+        </button>
+        <button class="quadrant-btn quad-4" id="quadBtn4" data-q="4">
+          <span class="q-label">High Energy</span><span class="q-sub">Lots of Time</span>
+        </button>
+      </div>
+    </div>
   </div>
 
   <div class="grid" style="margin-top:18px;">
@@ -304,24 +339,6 @@
     </div>
 
     <div>
-      <div class="panel">
-        <div class="panel-title"><h2>Quick Match</h2><span class="mono" style="font-size:10px;color:var(--text-faint);">no API — instant</span></div>
-        <div class="quadrant-grid">
-          <button class="quadrant-btn" id="quadBtn1" data-q="1">
-            <span class="q-label">Low Energy</span><span class="q-sub">Little Time</span>
-          </button>
-          <button class="quadrant-btn" id="quadBtn2" data-q="2">
-            <span class="q-label">Low Energy</span><span class="q-sub">Lots of Time</span>
-          </button>
-          <button class="quadrant-btn" id="quadBtn3" data-q="3">
-            <span class="q-label">High Energy</span><span class="q-sub">Little Time</span>
-          </button>
-          <button class="quadrant-btn" id="quadBtn4" data-q="4">
-            <span class="q-label">High Energy</span><span class="q-sub">Lots of Time</span>
-          </button>
-        </div>
-      </div>
-
       <div class="panel">
         <div class="panel-title"><h2>Ask the Queue</h2><span class="mono" style="font-size:10px;color:var(--text-faint);">voice-enabled</span></div>
         <div id="apiKeyRow" style="display:none; margin-bottom:12px; padding:10px; background:var(--panel-2); border:1px solid var(--border); border-radius:6px;">
@@ -869,7 +886,7 @@
     body.innerHTML = `
       <div class="mono" style="font-size:10.5px; color:var(--text-faint); margin-bottom:6px;">${tid(t)}</div>
       <input class="nu-title" data-field="title" value="${escapeHtml(t.title)}" oninput="Dispatch.nuDebouncedField('${t.id}','title',this.value)" onblur="Dispatch.nuCommitField('${t.id}','title',this.value)">
-      <textarea class="nu-notes" data-field="notes" placeholder="Notes…" oninput="Dispatch.nuDebouncedField('${t.id}','notes',this.value)" onblur="Dispatch.nuCommitField('${t.id}','notes',this.value)">${escapeHtml(t.notes||'')}</textarea>
+      <textarea class="nu-notes" data-field="notes" placeholder="Notes…" rows="6" oninput="Dispatch.nuDebouncedField('${t.id}','notes',this.value)" onblur="Dispatch.nuCommitField('${t.id}','notes',this.value)">${escapeHtml(t.notes||'')}</textarea>
 
       <div class="nu-row" style="grid-template-columns:2fr 1fr;">
         <div>
