@@ -2,7 +2,7 @@
 
 Dispatch is a single-file web app for managing a personal work portfolio: log tasks with priority, difficulty, and time estimates, and let the app suggest what to work on next based on a scoring system — or just ask it in plain language.
 
-**Current version: v2.1.1** (shown in the app header; see [Version History](#version-history) below)
+**Current version: v2.4.0** (shown in the app header; see [Version History](#version-history) below)
 
 ## Features
 
@@ -14,13 +14,14 @@ Dispatch is a single-file web app for managing a personal work portfolio: log ta
 - **Status actions**:
   - **Done** — closes the task (can be manually reactivated later from the Closed section if needed).
   - **Done for Day** — removes it from today's queue; it reactivates automatically the next calendar day.
-  - **Hold…** — set it aside until a specific day, or a quick duration (15 min / 1 hr / 4 hr / tomorrow 9am); it reactivates automatically once the hold expires.
+  - **Hold…** — set it aside for a quick duration (1 hr / 4 hr), a chosen number of Days or Weeks, or a specific calendar day; it reactivates automatically once the hold expires.
   - **De-prioritize** — sets it aside indefinitely until manually reactivated.
 - **Recurring tasks**:
   - **Daily** — reactivates the next day after being marked Done.
   - **Weekly** — pick one or more days of the week; reactivates on the next occurrence of any selected day after being marked Done.
 - **Chat assistant ("Ask the Queue")** — describe how much time or energy you have, and it recommends the best-fitting active task, using the Anthropic API. Supports voice input (browser speech recognition) and optional spoken replies. Only your active (non-Hold/Parked/De-prioritized/Closed) tasks are ever sent to the API. In standalone mode with a personal API key, each message typically costs well under a cent (Haiku 4.5 pricing, compact task format) — cost scales mainly with how many active tasks you have, since the whole active list is resent each message.
-- **Export / Import** — download your task list as a `.json` file (also copied to clipboard) and import it elsewhere, merging in anything new without touching existing tasks.
+- **Undo** — a header button reverts the single most recent change (status change, edit, hold, delete, or import overwrite) for catching misclicks. Single-level only, and automatic background changes (like a Daily task auto-reactivating) don't count toward it.
+- **Export / Import** — download your task list as a `.json` file (also copied to clipboard) and import it elsewhere. **Import fully replaces your current task list** with the imported file's contents — it does not merge — and shows a confirm-before-wipe review step (with counts) before anything is deleted.
 
 ## Getting Started
 
@@ -38,7 +39,7 @@ Just open `dispatch.html` directly (double-click it, or drag it into a browser t
 
 ### Moving data between copies
 
-Use the **Export** button to download a `.json` snapshot of your tasks (or copy it from your clipboard), then **Import** it into another copy of the app — on another device, another browser, or after switching between the Claude and standalone versions. Import merges by task ID; it won't duplicate or overwrite existing tasks.
+Use the **Export** button to download a `.json` snapshot of your tasks (or copy it from your clipboard), then **Import** it into another copy of the app — on another device, another browser, or after switching between the Claude and standalone versions. **Import replaces the entire current task list** with the file's contents; it does not merge, and anything not in the imported file is permanently deleted. A review step shows exactly how many tasks will be deleted and added before you confirm.
 
 ## How Scoring Works
 
@@ -74,6 +75,10 @@ score = (6 − priority) × 22 − difficulty × 6 − min(estMinutes, 240) / 24
 | v2.0.0 | Next Up card is fully editable in place (title, notes, priority, difficulty, time, recurrence, tags) with auto-save |
 | v2.1.0 | Quick Match moved beside Next Up (still a 2x2 grid); added escalating color coding across the four quadrant buttons |
 | v2.1.1 | Quick Match buttons are now square; Next Up notes field defaults to a 6-line height |
+| v2.1.2 | On Hold and Parked for Today sections now start collapsed by default |
+| v2.2.0 | Import now fully replaces the task list instead of merging, with a confirm-before-wipe review step |
+| v2.3.0 | Redesigned Hold options: 1hr/4hr quick buttons plus a Days/Weeks stepper (Days 1-6, Weeks 1-4) for longer holds |
+| v2.4.0 | Added single-level "Undo" button in the header for misclicks |
 
 ## Notes & Limitations
 

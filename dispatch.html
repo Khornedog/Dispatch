@@ -21,6 +21,10 @@
   v2.0.0  Next Up card is now fully editable in place (title, notes, priority, difficulty, time, daily/weekly/due date, tags) with auto-save, instead of a read-only summary
   v2.1.0  Moved Quick Match to sit beside Next Up (2x2 quadrant grid, unchanged) instead of above Ask the Queue; added escalating teal->green->amber->red color coding across the four quadrant buttons
   v2.1.1  Quick Match buttons are now square; Next Up notes field defaults to a 6-line height
+  v2.1.2  On Hold and Parked for Today sections now start collapsed by default, matching Deprioritized/Closed
+  v2.2.0  Import now fully replaces the task list instead of merging, with a confirm-before-wipe review step showing exactly how many tasks will be deleted/added before it executes
+  v2.3.0  Redesigned Hold quick-options: removed 15 min and Tomorrow-9am, kept 1hr/4hr, added a Days/Weeks unit toggle with a number stepper (Days 1-6, Weeks 1-4) for longer holds
+  v2.4.0  Added single-level "Undo" button in the header for misclicks — reverts the last status change, edit, hold, delete, or import overwrite; automatic background changes (auto-reactivation) don't count
   -- bump this on every future change, and add a line above --
 -->
 <html lang="en">
@@ -251,6 +255,12 @@
   .hold-options{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:14px; }
   .hold-options button{ background:var(--panel-2); border:1px solid var(--border); color:var(--text); padding:10px; border-radius:5px; font-size:12.5px; text-align:left; }
   .hold-options button:hover{ border-color:var(--teal); color:var(--teal); }
+  .hold-unit-btn{ flex:1; background:var(--panel-2); border:1px solid var(--border); color:var(--text-faint); padding:7px; border-radius:5px; font-size:12px; font-weight:600; }
+  .hold-unit-btn.selected{ background:rgba(78,158,151,0.18); border-color:var(--teal); color:var(--teal); font-weight:700; }
+  .hold-stepper{ display:flex; align-items:center; justify-content:center; gap:16px; background:var(--panel-2); border:1px solid var(--border); border-radius:6px; padding:10px; margin-bottom:12px; }
+  .hold-stepper button{ width:28px; height:28px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:5px; font-size:15px; }
+  .hold-stepper button:hover{ border-color:var(--amber); color:var(--amber); }
+  .hold-stepper span.mono{ font-size:20px; font-weight:700; color:var(--amber); min-width:24px; text-align:center; }
   .or-divider{ display:flex; align-items:center; gap:10px; color:var(--text-faint); font-size:10.5px; text-transform:uppercase; letter-spacing:0.08em; margin:14px 0; }
   .or-divider::before, .or-divider::after{ content:''; flex:1; height:1px; background:var(--border); }
 
@@ -266,7 +276,7 @@
       <div class="brand-mark">D</div>
       <div>
         <h1>Dispatch</h1>
-        <div class="tag">work queue console · v2.1.1</div>
+        <div class="tag">work queue console · v2.4.0</div>
       </div>
     </div>
     <div class="stats">
@@ -274,6 +284,7 @@
       <div class="stat"><div class="n" id="statTime">0h</div><div class="l">est. remaining</div></div>
       <div class="stat"><div class="n" id="statDone">0</div><div class="l">closed today</div></div>
     </div>
+    <button class="btn btn-sm" id="undoBtn" disabled title="Nothing to undo" style="align-self:center;">↺ Undo</button>
   </div>
 
   <div class="grid grid-nextup">
@@ -324,11 +335,11 @@
 
         <div id="activeList"></div>
 
-        <div class="section-label" data-target="holdBody" id="holdLabel"><span>On hold</span><span class="n" id="holdCount">0</span><span class="arrow">▾</span></div>
-        <div class="section-body" id="holdBody"></div>
+        <div class="section-label collapsed" data-target="holdBody" id="holdLabel"><span>On hold</span><span class="n" id="holdCount">0</span><span class="arrow">▾</span></div>
+        <div class="section-body" id="holdBody" style="display:none;"></div>
 
-        <div class="section-label" data-target="parkedBody" id="parkedLabel"><span>Parked for today</span><span class="n" id="parkedCount">0</span><span class="arrow">▾</span></div>
-        <div class="section-body" id="parkedBody"></div>
+        <div class="section-label collapsed" data-target="parkedBody" id="parkedLabel"><span>Parked for today</span><span class="n" id="parkedCount">0</span><span class="arrow">▾</span></div>
+        <div class="section-body" id="parkedBody" style="display:none;"></div>
 
         <div class="section-label collapsed" data-target="deprioBody" id="deprioLabel"><span>Deprioritized</span><span class="n" id="deprioCount">0</span><span class="arrow">▾</span></div>
         <div class="section-body" id="deprioBody" style="display:none;"></div>
@@ -434,13 +445,23 @@
   <div class="modal" style="max-width:360px;">
     <h3>Put On Hold</h3>
     <input type="hidden" id="holdTaskId">
-    <div class="hold-options">
-      <button data-mins="15">15 minutes</button>
+    <div class="hold-options" style="grid-template-columns:1fr 1fr;">
       <button data-mins="60">1 hour</button>
       <button data-mins="240">4 hours</button>
-      <button data-mins="tomorrow">Tomorrow, 9am</button>
     </div>
-    <div class="or-divider">or pick a day</div>
+    <div class="or-divider">hold for a stretch</div>
+    <div style="display:flex; gap:6px; margin-bottom:10px;">
+      <button type="button" class="hold-unit-btn selected" id="holdUnitDaysBtn" data-unit="days">Days</button>
+      <button type="button" class="hold-unit-btn" id="holdUnitWeeksBtn" data-unit="weeks">Weeks</button>
+    </div>
+    <div class="hold-stepper">
+      <button type="button" id="holdStepDown">−</button>
+      <span class="mono" id="holdStepValue">2</span>
+      <button type="button" id="holdStepUp">+</button>
+      <span id="holdStepUnitLabel" style="font-size:11.5px; color:var(--text-dim);">days</span>
+    </div>
+    <button class="btn btn-primary" id="setStretchHoldBtn" style="width:100%; margin-bottom:16px;">Set Hold</button>
+    <div class="or-divider">or pick a specific day</div>
     <div class="field"><input type="date" id="holdCustomDay"></div>
     <div class="modal-actions">
       <button class="btn" id="cancelHoldBtn">Cancel</button>
@@ -466,18 +487,30 @@
   <div class="modal" style="max-width:460px;">
     <h3>Import Tasks</h3>
     <p style="font-size:12.5px; color:var(--text-dim); line-height:1.5; margin-bottom:12px;">
-      Choose a Dispatch export file, or paste exported JSON below. Existing tasks are kept — only new ones are added.
+      Choose a Dispatch export file, or paste exported JSON below. <strong style="color:var(--red);">This replaces your entire current task list</strong> — anything not in the imported file will be permanently deleted.
     </p>
-    <div class="field">
-      <input type="file" id="importFile" accept="application/json,.json">
+    <div id="importStep1">
+      <div class="field">
+        <input type="file" id="importFile" accept="application/json,.json">
+      </div>
+      <div class="field">
+        <textarea id="importText" rows="8" placeholder="Paste exported JSON here…" style="font-family:'JetBrains Mono',monospace; font-size:11.5px;"></textarea>
+      </div>
+      <div id="importError" style="font-size:12px; color:var(--red); margin-bottom:8px; display:none;"></div>
+      <div class="modal-actions">
+        <button class="btn" id="cancelImportBtn">Cancel</button>
+        <button class="btn btn-primary" id="reviewImportBtn">Review Import</button>
+      </div>
     </div>
-    <div class="field">
-      <textarea id="importText" rows="8" placeholder="Paste exported JSON here…" style="font-family:'JetBrains Mono',monospace; font-size:11.5px;"></textarea>
-    </div>
-    <div id="importError" style="font-size:12px; color:var(--red); margin-bottom:8px; display:none;"></div>
-    <div class="modal-actions">
-      <button class="btn" id="cancelImportBtn">Cancel</button>
-      <button class="btn btn-primary" id="confirmImportBtn">Import</button>
+    <div id="importStep2" style="display:none;">
+      <div style="background:rgba(193,82,61,0.1); border:1px solid var(--red); border-radius:6px; padding:12px; margin-bottom:16px; font-size:12.5px; color:var(--text);">
+        <div id="importSummary" style="margin-bottom:8px; line-height:1.5;"></div>
+        <div style="color:var(--red); font-weight:600;">This cannot be undone.</div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="backImportBtn">Back</button>
+        <button class="btn" style="background:var(--red); border-color:var(--red); color:#fff;" id="confirmImportBtn">Replace All Tasks</button>
+      </div>
     </div>
   </div>
 </div>
@@ -963,9 +996,33 @@
   }
 
   /* ============== ACTIONS ============== */
+  let undoSnapshot = null;
+  function snapshotForUndo(label){
+    undoSnapshot = { tasks: JSON.parse(JSON.stringify(tasks)), label };
+    updateUndoButton();
+  }
+  function updateUndoButton(){
+    const btn = document.getElementById('undoBtn');
+    if(!btn) return;
+    btn.disabled = !undoSnapshot;
+    btn.title = undoSnapshot ? `Undo: ${undoSnapshot.label}` : 'Nothing to undo';
+  }
+  async function performUndo(){
+    if(!undoSnapshot) return;
+    tasks = undoSnapshot.tasks;
+    const label = undoSnapshot.label;
+    undoSnapshot = null;
+    if(lastSuggestedId && !tasks.find(t=>t.id===lastSuggestedId)) lastSuggestedId = null;
+    await saveTasks();
+    render();
+    updateUndoButton();
+    appendMsg('system', `Undone: ${label}`);
+  }
+
   async function setStatus(id, status){
     const t = tasks.find(x=>x.id===id);
     if(!t) return;
+    snapshotForUndo(`marked "${t.title}" as ${status}`);
     t.status = status;
     if(status === 'parked'){
       const d = new Date(); d.setDate(d.getDate()+1);
@@ -978,6 +1035,8 @@
     render();
   }
   async function deleteTask(id){
+    const t = tasks.find(x=>x.id===id);
+    if(t) snapshotForUndo(`removed "${t.title}"`);
     tasks = tasks.filter(t=>t.id!==id);
     await saveTasks();
     render();
@@ -988,9 +1047,23 @@
     openModal(t);
   }
 
+  let holdStepperUnit = 'days';
+  let holdStepperValue = 2;
+  const holdStepperBounds = { days: [1,6], weeks: [1,4] };
+
+  function updateHoldStepperUI(){
+    document.getElementById('holdUnitDaysBtn').classList.toggle('selected', holdStepperUnit === 'days');
+    document.getElementById('holdUnitWeeksBtn').classList.toggle('selected', holdStepperUnit === 'weeks');
+    document.getElementById('holdStepValue').textContent = holdStepperValue;
+    document.getElementById('holdStepUnitLabel').textContent = holdStepperUnit;
+  }
+
   function openHoldModal(id){
     document.getElementById('holdTaskId').value = id;
     document.getElementById('holdCustomDay').value = '';
+    holdStepperUnit = 'days';
+    holdStepperValue = 2;
+    updateHoldStepperUI();
     document.getElementById('holdModalOverlay').classList.add('open');
   }
   function closeHoldModal(){ document.getElementById('holdModalOverlay').classList.remove('open'); }
@@ -999,6 +1072,7 @@
     const id = document.getElementById('holdTaskId').value;
     const t = tasks.find(x=>x.id===id);
     if(!t || !untilIso) return;
+    snapshotForUndo(`put "${t.title}" on hold`);
     t.status = 'onhold';
     t.holdUntil = untilIso;
     delete t.holdUntilDay;
@@ -1012,6 +1086,7 @@
     const id = document.getElementById('holdTaskId').value;
     const t = tasks.find(x=>x.id===id);
     if(!t || !dateStr) return;
+    snapshotForUndo(`put "${t.title}" on hold`);
     t.status = 'onhold';
     t.holdUntilDay = dateStr;
     delete t.holdUntil;
@@ -1145,10 +1220,15 @@
     appendMsg('system', `Exported ${tasks.length} task(s) as a .json file${clipboardNote}. Bring it to another device and use Import to bring them in.`);
   }
 
+  let pendingImportTasks = null;
+
   function openImportModal(){
     document.getElementById('importFile').value = '';
     document.getElementById('importText').value = '';
     document.getElementById('importError').style.display = 'none';
+    document.getElementById('importStep1').style.display = 'block';
+    document.getElementById('importStep2').style.display = 'none';
+    pendingImportTasks = null;
     document.getElementById('importModalOverlay').classList.add('open');
   }
   function closeImportModal(){ document.getElementById('importModalOverlay').classList.remove('open'); }
@@ -1159,7 +1239,7 @@
     el.style.display = 'block';
   }
 
-  async function confirmImport(){
+  function reviewImport(){
     const raw = document.getElementById('importText').value.trim();
     if(!raw){ showImportError('Choose a file or paste exported JSON first.'); return; }
     let parsed;
@@ -1169,18 +1249,33 @@
     const incoming = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.tasks) ? parsed.tasks : null);
     if(!incoming){ showImportError('No tasks found in that file.'); return; }
 
-    let added = 0, skipped = 0;
-    incoming.forEach(it=>{
-      if(!it || !it.id || !it.title){ return; }
-      if(tasks.find(t=>t.id === it.id)){ skipped++; return; }
-      tasks.push(it);
-      added++;
-    });
+    const valid = incoming.filter(it => it && it.id && it.title);
+    if(valid.length === 0){ showImportError('No valid tasks found in that file.'); return; }
+
+    pendingImportTasks = valid;
+    document.getElementById('importSummary').textContent =
+      `Your current ${tasks.length} task(s) will be permanently deleted and replaced with ${valid.length} task(s) from this file.`;
+    document.getElementById('importStep1').style.display = 'none';
+    document.getElementById('importStep2').style.display = 'block';
+  }
+
+  function backFromImportReview(){
+    document.getElementById('importStep1').style.display = 'block';
+    document.getElementById('importStep2').style.display = 'none';
+  }
+
+  async function executeImportOverwrite(){
+    if(!pendingImportTasks) return;
+    const replacedCount = tasks.length;
+    const newCount = pendingImportTasks.length;
+    snapshotForUndo(`imported ${newCount} task(s) over ${replacedCount} existing`);
+    tasks = pendingImportTasks;
+    pendingImportTasks = null;
 
     await saveTasks();
     closeImportModal();
     render();
-    appendMsg('system', `Import complete — added ${added} new task(s)${skipped ? `, skipped ${skipped} already present` : ''}.`);
+    appendMsg('system', `Import complete — replaced ${replacedCount} task(s) with ${newCount} task(s) from the file.`);
   }
 
   /* ============== MODAL ============== */
@@ -1236,6 +1331,12 @@
   }
 
   async function finalizeSave(id, data, bumpConflictId){
+    if(id){
+      const existing = tasks.find(x=>x.id===id);
+      snapshotForUndo(`edited "${existing ? existing.title : data.title}"`);
+    } else {
+      snapshotForUndo(`added "${data.title}"`);
+    }
     if(bumpConflictId){
       const conflictTask = tasks.find(t => t.id === bumpConflictId);
       if(conflictTask) conflictTask.priority = 2;
@@ -1449,7 +1550,9 @@ ${taskLines}`;
   document.getElementById('exportBtn').addEventListener('click', exportTasks);
   document.getElementById('importBtn').addEventListener('click', openImportModal);
   document.getElementById('cancelImportBtn').addEventListener('click', closeImportModal);
-  document.getElementById('confirmImportBtn').addEventListener('click', confirmImport);
+  document.getElementById('reviewImportBtn').addEventListener('click', reviewImport);
+  document.getElementById('backImportBtn').addEventListener('click', backFromImportReview);
+  document.getElementById('confirmImportBtn').addEventListener('click', executeImportOverwrite);
   document.getElementById('importModalOverlay').addEventListener('click', (e)=>{ if(e.target.id==='importModalOverlay') closeImportModal(); });
   document.getElementById('importFile').addEventListener('change', (e)=>{
     const file = e.target.files[0];
@@ -1510,6 +1613,7 @@ ${taskLines}`;
     document.getElementById('filterWeeklyBtn').classList.toggle('toggle-active', weeklyFilterOn);
     render();
   });
+  document.getElementById('undoBtn').addEventListener('click', performUndo);
   document.getElementById('rerollBtn').addEventListener('click', ()=>{
     const active = tasks.filter(t=>t.status==='active');
     if(active.length < 2){ return; }
@@ -1537,16 +1641,37 @@ ${taskLines}`;
   document.getElementById('holdModalOverlay').addEventListener('click', (e)=>{ if(e.target.id==='holdModalOverlay') closeHoldModal(); });
   document.querySelectorAll('.hold-options button').forEach(btn=>{
     btn.addEventListener('click', ()=>{
-      const val = btn.dataset.mins;
-      let until;
-      if(val === 'tomorrow'){
-        const d = new Date(); d.setDate(d.getDate()+1); d.setHours(9,0,0,0);
-        until = d.toISOString();
-      } else {
-        until = new Date(Date.now() + Number(val)*60000).toISOString();
-      }
+      const until = new Date(Date.now() + Number(btn.dataset.mins)*60000).toISOString();
       confirmHold(until);
     });
+  });
+  document.getElementById('holdUnitDaysBtn').addEventListener('click', ()=>{
+    holdStepperUnit = 'days';
+    const [min,max] = holdStepperBounds.days;
+    holdStepperValue = Math.min(Math.max(holdStepperValue, min), max);
+    updateHoldStepperUI();
+  });
+  document.getElementById('holdUnitWeeksBtn').addEventListener('click', ()=>{
+    holdStepperUnit = 'weeks';
+    const [min,max] = holdStepperBounds.weeks;
+    holdStepperValue = Math.min(Math.max(holdStepperValue, min), max);
+    updateHoldStepperUI();
+  });
+  document.getElementById('holdStepDown').addEventListener('click', ()=>{
+    const [min] = holdStepperBounds[holdStepperUnit];
+    if(holdStepperValue > min) holdStepperValue--;
+    updateHoldStepperUI();
+  });
+  document.getElementById('holdStepUp').addEventListener('click', ()=>{
+    const [,max] = holdStepperBounds[holdStepperUnit];
+    if(holdStepperValue < max) holdStepperValue++;
+    updateHoldStepperUI();
+  });
+  document.getElementById('setStretchHoldBtn').addEventListener('click', ()=>{
+    const days = holdStepperUnit === 'weeks' ? holdStepperValue * 7 : holdStepperValue;
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    confirmHoldDay(localDateKey(d));
   });
   document.getElementById('confirmHoldBtn').addEventListener('click', ()=>{
     const val = document.getElementById('holdCustomDay').value;
